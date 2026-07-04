@@ -4,20 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#123f46">
-  <meta name="description" content="Himnario IBSI instalable, con listados personales y transposición de acordes.">
+  <meta name="description" content="Himnario IBSI instalable, adaptable a cualquier pantalla, con hasta cinco listados personales y transposición de acordes.">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Himnario IBSI">
-  <link rel="manifest" href="manifest.v2.0.webmanifest">
+  <link rel="manifest" href="manifest.v2.1.webmanifest">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
   <link rel="icon" href="assets/icons/icon-192.png">
-  <link rel="stylesheet" href="styles.v2.0.css">
+  <link rel="stylesheet" href="styles.v2.1.css">
   <title>Himnario IBSI</title>
 </head>
 <body>
   <header class="app-header">
     <div>
-      <p class="eyebrow">Versión 2.0 completa</p>
+      <p class="eyebrow">Versión 2.1</p>
       <h1>Himnario IBSI</h1>
     </div>
     <button id="installButton" class="secondary hidden" type="button">Instalar</button>
@@ -31,7 +31,7 @@
   <nav class="tabs" aria-label="Secciones principales">
     <button class="tab active" data-view="catalog" type="button">Alabanzas</button>
     <button class="tab" data-view="setlist" type="button">
-      Mi listado <span id="setlistCount" class="badge">0</span>
+      Mis listados <span id="setlistCount" class="badge">1</span>
     </button>
   </nav>
 
@@ -55,22 +55,37 @@
     </section>
 
     <section id="setlistView" class="view" aria-labelledby="setlistTitle">
-      <div class="section-heading">
+      <div class="list-manager-heading">
         <div>
-          <h2 id="setlistTitle">Mi listado</h2>
-          <p>Se guarda únicamente en este dispositivo.</p>
+          <h2 id="setlistTitle">Mis listados</h2>
+          <p id="listLimitText">1 de 5 listados guardados.</p>
         </div>
+        <button id="createListButton" class="primary" type="button">Nuevo listado</button>
       </div>
 
-      <label class="field">
-        <span>Nombre del listado</span>
-        <input id="setlistName" type="text" maxlength="80" placeholder="Ejemplo: Culto del sábado">
-      </label>
+      <div id="savedListsGrid" class="saved-lists-grid" aria-label="Listados guardados"></div>
 
-      <div id="setlistItems" class="setlist-items"></div>
-      <p id="emptySetlist" class="empty-state">Todavía no has agregado alabanzas.</p>
+      <section id="activeListEditor" class="active-list-editor" aria-labelledby="activeListTitle">
+        <div class="active-list-heading">
+          <div>
+            <span class="section-label">Editando</span>
+            <h3 id="activeListTitle">Mi listado</h3>
+          </div>
+          <button id="deleteListButton" class="danger compact" type="button">Eliminar listado</button>
+        </div>
 
-      <button id="clearSetlistButton" class="danger hidden" type="button">Vaciar listado</button>
+        <label class="field">
+          <span>Nombre del listado</span>
+          <input id="setlistName" type="text" maxlength="80" placeholder="Ejemplo: Culto del sábado">
+        </label>
+
+        <p id="saveStatus" class="save-status">Guardado automáticamente en este dispositivo.</p>
+
+        <div id="setlistItems" class="setlist-items"></div>
+        <p id="emptySetlist" class="empty-state">Todavía no has agregado alabanzas a este listado.</p>
+
+        <button id="clearSetlistButton" class="danger hidden" type="button">Vaciar este listado</button>
+      </section>
     </section>
   </main>
 
@@ -95,11 +110,16 @@
       <button id="transposeReset" class="reset-transpose" type="button">Original</button>
     </div>
 
-    <div class="zoom-toolbar" aria-label="Controles de tamaño">
-      <button id="zoomOut" type="button">−</button>
-      <span id="zoomLabel">100%</span>
-      <button id="zoomIn" type="button">+</button>
-      <button id="zoomReset" type="button">Ajustar</button>
+    <div id="setlistNavigation" class="setlist-navigation hidden" aria-label="Navegación rápida del listado">
+      <button id="previousHymnButton" class="song-nav-button previous" type="button">
+        <span>← Anterior</span>
+        <strong id="previousHymnName">Inicio del listado</strong>
+      </button>
+      <div id="setlistPosition" class="setlist-position">1 de 1</div>
+      <button id="nextHymnButton" class="song-nav-button next" type="button">
+        <span>Siguiente →</span>
+        <strong id="nextHymnName">Fin del listado</strong>
+      </button>
     </div>
 
     <div id="pageViewport" class="page-viewport">
@@ -109,6 +129,6 @@
 
   <div id="toast" class="toast hidden" role="status"></div>
 
-  <script src="app.v2.0.js" defer></script>
+  <script src="app.v2.1.js" defer></script>
 </body>
 </html>

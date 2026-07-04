@@ -1,13 +1,13 @@
-const CACHE_NAME = "himnario-ibsi-v2.0.0";
+const CACHE_NAME = "himnario-ibsi-v2.1.0";
 
 const PRECACHE_URLS = [
   "./",
   "index.html",
-  "styles.v2.0.css",
-  "app.v2.0.js",
-  "hymns.v2.0.json",
-  "hymn_layouts.v2.0.json",
-  "manifest.v2.0.webmanifest",
+  "styles.v2.1.css",
+  "app.v2.1.js",
+  "hymns.v2.1.json",
+  "hymn_layouts.v2.1.json",
+  "manifest.v2.1.webmanifest",
   "assets/icons/icon-192.png",
   "assets/icons/icon-512.png"
 ];
@@ -32,6 +32,7 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+
   const requestUrl = new URL(event.request.url);
   if (requestUrl.origin !== self.location.origin) return;
 
@@ -51,6 +52,7 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
+
       return fetch(event.request).then((response) => {
         if (!response || response.status !== 200) return response;
         const copy = response.clone();
@@ -62,5 +64,7 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });

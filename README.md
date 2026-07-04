@@ -1,27 +1,24 @@
-# Himnario IBSI - PWA versión 2.0 completa
+# Himnario IBSI - PWA versión 2.1
 
-Esta versión incorpora las **214 alabanzas** del Himnario Musical de Alabanzas y Coros “A Dios sea la gloria”.
+## Cambios principales
 
-## Incluye
+- Se eliminaron completamente los controles de zoom.
+- La hoja de cada alabanza se ajusta automáticamente al ancho de teléfono, tableta o computadora sin mover los acordes.
+- Ahora se pueden guardar hasta **5 listados diferentes**.
+- El listado anterior de la versión 2.0 se migra automáticamente como el primer listado.
+- Cada listado tiene nombre propio y se guarda automáticamente en el dispositivo.
+- Al abrir una alabanza desde un listado aparecen botones **Anterior** y **Siguiente**, con el nombre de cada alabanza.
+- En teléfono también se puede deslizar horizontalmente para avanzar o regresar.
+- Se mantienen las 214 alabanzas, el buscador, la transposición y el funcionamiento sin conexión.
 
-- Alabanzas 1 a 214.
-- Búsqueda por número o título.
-- Vista única con letra y acordes alineados según el PDF.
-- Transposición de acordes por semitonos.
-- Zoom para celular, tableta o computadora.
-- Listados personales guardados en cada dispositivo.
-- Funcionamiento sin conexión después de la primera carga.
-- Instalación como PWA en Android, iPhone y computadora.
+## Actualizar en GitHub Pages
 
-## Probar en Windows
+1. Descomprime el ZIP.
+2. En el repositorio `Himnario-IBSI`, abre **Add file → Upload files**.
+3. Arrastra todo el contenido de esta carpeta.
+4. GitHub mostrará archivos nuevos de versión 2.1 y modificaciones en `index.html` y `sw.js`.
+5. Confirma con un mensaje como: `Actualizar Himnario IBSI a v2.1`.
+6. Espera a que GitHub Pages termine el despliegue.
+7. Abre la aplicación con Internet. Si aparece el aviso de nueva versión, pulsa **Actualizar ahora**.
 
-1. Descomprime el archivo ZIP.
-2. Cierra cualquier versión anterior que use el puerto 8000.
-3. Ejecuta `iniciar_prueba.bat`.
-4. Se abrirá `http://localhost:8000/?version=2.0`.
-
-Si el navegador muestra una versión anterior, presiona `Ctrl + F5` una sola vez.
-
-## Conservación de listados
-
-Los listados y tonos continúan usando las mismas claves locales. Al actualizar desde la misma dirección, no deberían borrarse.
+Los listados y tonos guardados se conservan porque se mantienen las claves de almacenamiento local y se migra el listado anterior.
