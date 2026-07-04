@@ -1,0 +1,25 @@
+{
+  "name": "Himnario IBSI",
+  "short_name": "Himnario",
+  "description": "Himnario musical IBSI con 214 alabanzas, listados personales y transposición de acordes.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f5f3",
+  "theme_color": "#123f46",
+  "icons": [
+    {
+      "src": "assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

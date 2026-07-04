@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#123f46">
+  <meta name="description" content="Himnario IBSI instalable, con listados personales y transposición de acordes.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Himnario IBSI">
+  <link rel="manifest" href="manifest.v2.0.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+  <link rel="icon" href="assets/icons/icon-192.png">
+  <link rel="stylesheet" href="styles.v2.0.css">
+  <title>Himnario IBSI</title>
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">Versión 2.0 completa</p>
+      <h1>Himnario IBSI</h1>
+    </div>
+    <button id="installButton" class="secondary hidden" type="button">Instalar</button>
+  </header>
+
+  <div id="updateBanner" class="update-banner hidden" role="status">
+    <span>Hay una nueva versión disponible.</span>
+    <button id="updateButton" type="button">Actualizar ahora</button>
+  </div>
+
+  <nav class="tabs" aria-label="Secciones principales">
+    <button class="tab active" data-view="catalog" type="button">Alabanzas</button>
+    <button class="tab" data-view="setlist" type="button">
+      Mi listado <span id="setlistCount" class="badge">0</span>
+    </button>
+  </nav>
+
+  <main>
+    <section id="catalogView" class="view active" aria-labelledby="catalogTitle">
+      <div class="section-heading">
+        <div>
+          <h2 id="catalogTitle">Buscar alabanzas</h2>
+          <p id="catalogCount">214 alabanzas disponibles. Busca por número o nombre.</p>
+        </div>
+        <span id="connectionState" class="status-pill">Comprobando conexión…</span>
+      </div>
+
+      <label class="search-box">
+        <span class="sr-only">Buscar alabanza</span>
+        <input id="searchInput" type="search" placeholder="Ejemplo: Majestad, 42 o fidelidad" autocomplete="off">
+      </label>
+
+      <div id="hymnGrid" class="hymn-grid" aria-live="polite"></div>
+      <p id="emptySearch" class="empty-state hidden">No se encontraron alabanzas.</p>
+    </section>
+
+    <section id="setlistView" class="view" aria-labelledby="setlistTitle">
+      <div class="section-heading">
+        <div>
+          <h2 id="setlistTitle">Mi listado</h2>
+          <p>Se guarda únicamente en este dispositivo.</p>
+        </div>
+      </div>
+
+      <label class="field">
+        <span>Nombre del listado</span>
+        <input id="setlistName" type="text" maxlength="80" placeholder="Ejemplo: Culto del sábado">
+      </label>
+
+      <div id="setlistItems" class="setlist-items"></div>
+      <p id="emptySetlist" class="empty-state">Todavía no has agregado alabanzas.</p>
+
+      <button id="clearSetlistButton" class="danger hidden" type="button">Vaciar listado</button>
+    </section>
+  </main>
+
+  <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-labelledby="viewerTitle">
+    <div class="viewer-toolbar">
+      <button id="closeViewer" class="icon-button" type="button" aria-label="Cerrar">←</button>
+      <div class="viewer-title-group">
+        <strong id="viewerTitle"></strong>
+        <span id="viewerSubtitle"></span>
+      </div>
+      <button id="viewerAddButton" class="primary compact" type="button">Agregar</button>
+    </div>
+
+    <div id="transposeToolbar" class="transpose-toolbar" aria-label="Controles de transposición">
+      <button id="transposeDown" type="button" aria-label="Bajar un semitono">−</button>
+      <div class="key-display">
+        <span>Tono actual</span>
+        <strong id="currentKey">—</strong>
+        <small id="transposeAmount">Tono original</small>
+      </div>
+      <button id="transposeUp" type="button" aria-label="Subir un semitono">+</button>
+      <button id="transposeReset" class="reset-transpose" type="button">Original</button>
+    </div>
+
+    <div class="zoom-toolbar" aria-label="Controles de tamaño">
+      <button id="zoomOut" type="button">−</button>
+      <span id="zoomLabel">100%</span>
+      <button id="zoomIn" type="button">+</button>
+      <button id="zoomReset" type="button">Ajustar</button>
+    </div>
+
+    <div id="pageViewport" class="page-viewport">
+      <div id="transposedSheet" class="transposed-sheet" role="document" aria-label="Letra con acordes transpuestos y alineados"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+
+  <script src="app.v2.0.js" defer></script>
+</body>
+</html>
