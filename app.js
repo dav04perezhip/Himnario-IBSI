@@ -1,11 +1,13 @@
 const MAX_LISTS = 5;
+const APP_VERSION = "2.2";
 
 const STORAGE_KEYS = {
   legacySetlist: "ibsi-setlist-v1",
   legacySetlistName: "ibsi-setlist-name-v1",
   savedLists: "ibsi-saved-lists-v2",
   activeListId: "ibsi-active-list-id-v2",
-  transposeMap: "ibsi-transpose-v1"
+  transposeMap: "ibsi-transpose-v1",
+  emptyDefaultCleaned: "ibsi-empty-default-cleaned-v2-2"
 };
 
 const SHARP_NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -23,6 +25,8 @@ let activeListId = loadActiveListId(savedLists);
 let transposeMap = loadTransposeMap();
 let currentHymn = null;
 let viewerContext = { source: "catalog", listId: null };
+let sharedList = null;
+let reopenSharedModalAfterViewer = false;
 let swipeStart = null;
 let deferredInstallPrompt = null;
 let waitingServiceWorker = null;
@@ -34,12 +38,15 @@ const elements = {
   tabs: [...document.querySelectorAll(".tab")],
   catalogView: document.querySelector("#catalogView"),
   setlistView: document.querySelector("#setlistView"),
+  noListsState: document.querySelector("#noListsState"),
   savedListsGrid: document.querySelector("#savedListsGrid"),
   activeListEditor: document.querySelector("#activeListEditor"),
   activeListTitle: document.querySelector("#activeListTitle"),
   listLimitText: document.querySelector("#listLimitText"),
   createListButton: document.querySelector("#createListButton"),
+  createFirstListButton: document.querySelector("#createFirstListButton"),
   deleteListButton: document.querySelector("#deleteListButton"),
+  shareListButton: document.querySelector("#shareListButton"),
   setlistItems: document.querySelector("#setlistItems"),
   emptySetlist: document.querySelector("#emptySetlist"),
   setlistCount: document.querySelector("#setlistCount"),
@@ -64,6 +71,13 @@ const elements = {
   nextHymnButton: document.querySelector("#nextHymnButton"),
   nextHymnName: document.querySelector("#nextHymnName"),
   setlistPosition: document.querySelector("#setlistPosition"),
+  sharedListModal: document.querySelector("#sharedListModal"),
+  sharedListTitle: document.querySelector("#sharedListTitle"),
+  sharedListSummary: document.querySelector("#sharedListSummary"),
+  sharedListItems: document.querySelector("#sharedListItems"),
+  closeSharedListButton: document.querySelector("#closeSharedListButton"),
+  openSharedListButton: document.querySelector("#openSharedListButton"),
+  saveSharedListButton: document.querySelector("#saveSharedListButton"),
   toast: document.querySelector("#toast"),
   installButton: document.querySelector("#installButton"),
   connectionState: document.querySelector("#connectionState"),
@@ -81,8 +95,8 @@ async function init() {
 
   try {
     const [hymnResponse, layoutResponse] = await Promise.all([
-      fetch("hymns.v2.1.json"),
-      fetch("hymn_layouts.v2.1.json")
+      fetch(`hymns.json?v=${APP_VERSION}`),
+      fetch(`hymn_layouts.json?v=${APP_VERSION}`)
     ]);
 
     if (!hymnResponse.ok || !layoutResponse.ok) {
@@ -94,9 +108,16 @@ async function init() {
     renderCatalog(hymns);
     renderListManager();
 
-    const requestedHymn = Number(new URLSearchParams(window.location.search).get("hymn"));
-    if (Number.isInteger(requestedHymn) && hymns.some((item) => item.number === requestedHymn)) {
-      openViewer(requestedHymn);
+    const sharedPayload = parseSharedListFromHash();
+    if (sharedPayload) {
+      sharedList = sharedPayload;
+      renderSharedListModal();
+      openSharedListModal();
+    } else {
+      const requestedHymn = Number(new URLSearchParams(window.location.search).get("hymn"));
+      if (Number.isInteger(requestedHymn) && hymns.some((item) => item.number === requestedHymn)) {
+        openViewer(requestedHymn);
+      }
     }
   } catch (error) {
     console.error(error);
@@ -121,7 +142,9 @@ function wireEvents() {
   });
 
   elements.createListButton.addEventListener("click", createNewList);
+  elements.createFirstListButton.addEventListener("click", createNewList);
   elements.deleteListButton.addEventListener("click", deleteActiveList);
+  elements.shareListButton.addEventListener("click", shareActiveList);
 
   elements.setlistName.addEventListener("input", () => {
     const activeList = getActiveList();
@@ -164,7 +187,17 @@ function wireEvents() {
   elements.closeViewer.addEventListener("click", closeViewer);
 
   elements.viewerAddButton.addEventListener("click", () => {
-    if (currentHymn) addToActiveList(currentHymn.number);
+    if (!currentHymn) return;
+
+    if (!getActiveList()) {
+      closeViewer();
+      switchView("setlist");
+      showToast("Primero crea un listado para agregar esta alabanza.");
+      elements.createListButton.focus();
+      return;
+    }
+
+    addToActiveList(currentHymn.number);
   });
 
   elements.transposeDown.addEventListener("click", () => changeTranspose(-1));
@@ -180,7 +213,7 @@ function wireEvents() {
   }, { passive: true });
 
   elements.pageViewport.addEventListener("touchend", (event) => {
-    if (!swipeStart || viewerContext.source !== "setlist") return;
+    if (!swipeStart || !isViewerListContext()) return;
 
     const touch = event.changedTouches[0];
     const deltaX = touch.clientX - swipeStart.x;
@@ -190,6 +223,15 @@ function wireEvents() {
     if (Math.abs(deltaX) < 70 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.4) return;
     navigateSetlist(deltaX < 0 ? 1 : -1);
   }, { passive: true });
+
+  elements.closeSharedListButton.addEventListener("click", () => closeSharedListModal(true));
+  elements.openSharedListButton.addEventListener("click", () => {
+    if (!sharedList || sharedList.hymns.length === 0) return;
+    closeSharedListModal(false);
+    reopenSharedModalAfterViewer = true;
+    openViewer(sharedList.hymns[0], { source: "shared", listId: sharedList.id });
+  });
+  elements.saveSharedListButton.addEventListener("click", importSharedList);
 
   window.addEventListener("online", updateConnectionState);
   window.addEventListener("offline", updateConnectionState);
@@ -211,11 +253,16 @@ function wireEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
+    if (!elements.sharedListModal.classList.contains("hidden") && event.key === "Escape") {
+      closeSharedListModal(true);
+      return;
+    }
+
     if (elements.viewer.classList.contains("hidden")) return;
 
     if (event.key === "Escape") closeViewer();
-    if (viewerContext.source === "setlist" && event.key === "ArrowLeft") navigateSetlist(-1);
-    if (viewerContext.source === "setlist" && event.key === "ArrowRight") navigateSetlist(1);
+    if (isViewerListContext() && event.key === "ArrowLeft") navigateSetlist(-1);
+    if (isViewerListContext() && event.key === "ArrowRight") navigateSetlist(1);
   });
 }
 
@@ -238,7 +285,9 @@ function renderCatalog(items) {
     `;
 
     card.querySelector(".card-open").addEventListener("click", () => openViewer(hymn.number));
-    card.addEventListener("dblclick", () => addToActiveList(hymn.number));
+    card.addEventListener("dblclick", () => {
+      if (getActiveList()) addToActiveList(hymn.number);
+    });
     fragment.appendChild(card);
   }
 
@@ -248,12 +297,18 @@ function renderCatalog(items) {
 function renderListManager() {
   renderSavedListsGrid();
   renderActiveList();
-  elements.setlistCount.textContent = String(savedLists.length);
-  elements.listLimitText.textContent = `${savedLists.length} de ${MAX_LISTS} listados guardados.`;
-  elements.createListButton.disabled = savedLists.length >= MAX_LISTS;
-  elements.createListButton.textContent = savedLists.length >= MAX_LISTS
+
+  const count = savedLists.length;
+  elements.setlistCount.textContent = String(count);
+  elements.listLimitText.textContent = count === 0
+    ? "No tienes listados guardados."
+    : `${count} de ${MAX_LISTS} listados guardados.`;
+  elements.createListButton.disabled = count >= MAX_LISTS;
+  elements.createListButton.textContent = count >= MAX_LISTS
     ? "Límite alcanzado"
     : "Nuevo listado";
+  elements.noListsState.classList.toggle("hidden", count > 0);
+  elements.savedListsGrid.classList.toggle("hidden", count === 0);
 }
 
 function renderSavedListsGrid() {
@@ -283,6 +338,7 @@ function renderActiveList() {
 
   if (!activeList) {
     elements.activeListEditor.classList.add("hidden");
+    elements.setlistItems.innerHTML = "";
     return;
   }
 
@@ -293,7 +349,7 @@ function renderActiveList() {
   elements.setlistItems.innerHTML = "";
   elements.emptySetlist.classList.toggle("hidden", activeList.hymns.length > 0);
   elements.clearSetlistButton.classList.toggle("hidden", activeList.hymns.length === 0);
-  elements.deleteListButton.disabled = savedLists.length <= 1;
+  elements.shareListButton.disabled = activeList.hymns.length === 0;
 
   const fragment = document.createDocumentFragment();
 
@@ -352,19 +408,21 @@ function deleteActiveList() {
   const activeList = getActiveList();
   if (!activeList) return;
 
-  if (savedLists.length <= 1) {
-    showToast("Debe quedar al menos un listado. Puedes vaciarlo o cambiarle el nombre.");
-    return;
-  }
-
   if (!confirm(`¿Deseas eliminar el listado “${displayListName(activeList)}”?`)) return;
 
   const currentIndex = savedLists.findIndex((list) => list.id === activeList.id);
   savedLists = savedLists.filter((list) => list.id !== activeList.id);
-  const nextIndex = Math.min(currentIndex, savedLists.length - 1);
-  activeListId = savedLists[nextIndex].id;
+
+  if (savedLists.length > 0) {
+    const nextIndex = Math.min(currentIndex, savedLists.length - 1);
+    activeListId = savedLists[nextIndex].id;
+  } else {
+    activeListId = null;
+  }
+
   persistLists();
   renderListManager();
+  updateViewerAddButton();
   showToast("Listado eliminado.");
 }
 
@@ -373,15 +431,19 @@ function selectList(listId) {
   activeListId = listId;
   persistLists();
   renderListManager();
+  updateViewerAddButton();
 }
 
 function getActiveList() {
-  return savedLists.find((list) => list.id === activeListId) || savedLists[0] || null;
+  return savedLists.find((list) => list.id === activeListId) || null;
 }
 
 function addToActiveList(number) {
   const activeList = getActiveList();
-  if (!activeList) return;
+  if (!activeList) {
+    showToast("Primero crea un listado.");
+    return;
+  }
 
   if (activeList.hymns.includes(number)) {
     showToast(`Esta alabanza ya está en “${displayListName(activeList)}”.`);
@@ -426,18 +488,26 @@ function openViewer(number, context = { source: "catalog", listId: null }) {
   const hymn = hymns.find((item) => item.number === number);
   if (!hymn) return;
 
-  const sourceList = context.source === "setlist"
-    ? savedLists.find((list) => list.id === context.listId && list.hymns.includes(number))
-    : null;
+  let resolvedContext = { source: "catalog", listId: null };
 
-  viewerContext = sourceList
-    ? { source: "setlist", listId: sourceList.id }
-    : { source: "catalog", listId: null };
+  if (context.source === "setlist") {
+    const sourceList = savedLists.find(
+      (list) => list.id === context.listId && list.hymns.includes(number)
+    );
+    if (sourceList) resolvedContext = { source: "setlist", listId: sourceList.id };
+  }
 
+  if (context.source === "shared" && sharedList?.hymns.includes(number)) {
+    resolvedContext = { source: "shared", listId: sharedList.id };
+  }
+
+  viewerContext = resolvedContext;
   currentHymn = hymn;
+
+  const contextList = getViewerList();
   elements.viewerTitle.textContent = hymn.title;
-  elements.viewerSubtitle.textContent = viewerContext.source === "setlist"
-    ? `${displayListName(sourceList)} · Alabanza ${hymn.number}`
+  elements.viewerSubtitle.textContent = contextList
+    ? `${displayListName(contextList)} · Alabanza ${hymn.number}`
     : `Himnario IBSI · Alabanza ${hymn.number}`;
 
   elements.viewer.classList.remove("hidden");
@@ -450,22 +520,41 @@ function openViewer(number, context = { source: "catalog", listId: null }) {
 }
 
 function closeViewer() {
+  const shouldReopenShared = viewerContext.source === "shared" && reopenSharedModalAfterViewer;
+
   elements.viewer.classList.add("hidden");
   elements.transposedSheet.replaceChildren();
   document.body.style.overflow = "";
   currentHymn = null;
   viewerContext = { source: "catalog", listId: null };
   swipeStart = null;
+
+  if (shouldReopenShared && sharedList) {
+    reopenSharedModalAfterViewer = false;
+    openSharedListModal();
+  }
+}
+
+function getViewerList() {
+  if (viewerContext.source === "setlist") {
+    return savedLists.find((list) => list.id === viewerContext.listId) || null;
+  }
+
+  if (viewerContext.source === "shared") {
+    return sharedList;
+  }
+
+  return null;
+}
+
+function isViewerListContext() {
+  return Boolean(getViewerList());
 }
 
 function updateSetlistNavigation() {
-  if (!currentHymn || viewerContext.source !== "setlist") {
-    elements.setlistNavigation.classList.add("hidden");
-    return;
-  }
+  const list = getViewerList();
 
-  const list = savedLists.find((item) => item.id === viewerContext.listId);
-  if (!list) {
+  if (!currentHymn || !list) {
     elements.setlistNavigation.classList.add("hidden");
     return;
   }
@@ -497,9 +586,9 @@ function updateSetlistNavigation() {
 }
 
 function navigateSetlist(direction) {
-  if (!currentHymn || viewerContext.source !== "setlist") return;
+  if (!currentHymn) return;
 
-  const list = savedLists.find((item) => item.id === viewerContext.listId);
+  const list = getViewerList();
   if (!list) return;
 
   const currentIndex = list.hymns.indexOf(currentHymn.number);
@@ -508,7 +597,7 @@ function navigateSetlist(direction) {
   if (targetIndex < 0 || targetIndex >= list.hymns.length) return;
 
   openViewer(list.hymns[targetIndex], {
-    source: "setlist",
+    source: viewerContext.source,
     listId: list.id
   });
 }
@@ -550,10 +639,9 @@ function updateTransposeDisplay() {
 }
 
 function formatTransposeAmount(shift) {
-  if (shift === 0) return "Tono original";
+  if (shift === 0) return "Original";
   const sign = shift > 0 ? "+" : "";
-  const unit = Math.abs(shift) === 1 ? "semitono" : "semitonos";
-  return `${sign}${shift} ${unit}`;
+  return `${sign}${shift}`;
 }
 
 function transposeKey(key, shift, preferFlats) {
@@ -577,7 +665,6 @@ function renderTransposedSheet() {
   const svgNamespace = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(svgNamespace, "svg");
   svg.classList.add("hymn-layout-svg");
-  svg.setAttribute("viewBox", `0 0 ${layout.width} ${layout.height}`);
   svg.setAttribute("role", "img");
   svg.setAttribute(
     "aria-label",
@@ -587,15 +674,10 @@ function renderTransposedSheet() {
       currentHymn.preferFlats
     )}`
   );
-  svg.setAttribute("preserveAspectRatio", "xMinYMin meet");
+  svg.setAttribute("preserveAspectRatio", "xMidYMin meet");
 
-  const background = document.createElementNS(svgNamespace, "rect");
-  background.setAttribute("x", "0");
-  background.setAttribute("y", "0");
-  background.setAttribute("width", String(layout.width));
-  background.setAttribute("height", String(layout.height));
-  background.setAttribute("fill", "#ffffff");
-  svg.appendChild(background);
+  const group = document.createElementNS(svgNamespace, "g");
+  group.setAttribute("class", "hymn-content");
 
   for (const item of layout.items) {
     const textElement = document.createElementNS(svgNamespace, "text");
@@ -618,10 +700,61 @@ function renderTransposedSheet() {
     textElement.setAttribute("fill", isChordElement ? "#075e6a" : "#111111");
     textElement.setAttribute("text-rendering", "geometricPrecision");
     textElement.textContent = text;
-    svg.appendChild(textElement);
+    group.appendChild(textElement);
   }
 
+  svg.appendChild(group);
   elements.transposedSheet.replaceChildren(svg);
+
+  requestAnimationFrame(() => {
+    applyContentFitViewBox(svg, group, layout);
+  });
+}
+
+function applyContentFitViewBox(svg, group, layout) {
+  let box;
+
+  try {
+    box = group.getBBox();
+  } catch {
+    box = { x: 0, y: 0, width: layout.width, height: layout.height };
+  }
+
+  if (!box.width || !box.height) {
+    svg.setAttribute("viewBox", `0 0 ${layout.width} ${layout.height}`);
+    return;
+  }
+
+  const isPhone = window.matchMedia("(max-width: 600px)").matches;
+  const minimumWidthRatio = isPhone ? 0.68 : 0.76;
+  const horizontalPadding = Math.max(9, box.width * 0.025);
+  const verticalPadding = Math.max(12, box.height * 0.025);
+
+  const contentWidth = box.width + horizontalPadding * 2;
+  const viewWidth = Math.min(
+    layout.width,
+    Math.max(contentWidth, layout.width * minimumWidthRatio)
+  );
+
+  const centerX = box.x + box.width / 2;
+  let viewX = centerX - viewWidth / 2;
+  viewX = Math.max(0, Math.min(viewX, layout.width - viewWidth));
+
+  const viewY = Math.max(0, box.y - verticalPadding);
+  const maximumHeight = Math.max(1, layout.height - viewY);
+  const viewHeight = Math.min(
+    maximumHeight,
+    box.height + verticalPadding * 2
+  );
+
+  svg.setAttribute(
+    "viewBox",
+    `${roundValue(viewX)} ${roundValue(viewY)} ${roundValue(viewWidth)} ${roundValue(viewHeight)}`
+  );
+}
+
+function roundValue(value) {
+  return Math.round(value * 100) / 100;
 }
 
 function transposeChordToken(token, shift, preferFlats) {
@@ -659,12 +792,264 @@ function updateViewerAddButton() {
   if (!currentHymn) return;
 
   const activeList = getActiveList();
-  const exists = Boolean(activeList && activeList.hymns.includes(currentHymn.number));
+
+  if (!activeList) {
+    elements.viewerAddButton.textContent = "Crear listado";
+    elements.viewerAddButton.disabled = false;
+    elements.viewerAddButton.title = "Crear un listado antes de agregar la alabanza";
+    return;
+  }
+
+  const exists = activeList.hymns.includes(currentHymn.number);
   elements.viewerAddButton.textContent = exists ? "Agregada" : "Agregar";
   elements.viewerAddButton.disabled = exists;
-  elements.viewerAddButton.title = activeList
-    ? `${exists ? "Ya está en" : "Agregar a"} ${displayListName(activeList)}`
-    : "";
+  elements.viewerAddButton.title =
+    `${exists ? "Ya está en" : "Agregar a"} ${displayListName(activeList)}`;
+}
+
+async function shareActiveList() {
+  const list = getActiveList();
+  if (!list || list.hymns.length === 0) {
+    showToast("Agrega al menos una alabanza antes de compartir.");
+    return;
+  }
+
+  const shareUrl = buildSharedListUrl(list);
+  const shareText = buildWhatsAppShareText(list);
+
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: `Himnario IBSI — ${displayListName(list)}`,
+        text: shareText,
+        url: shareUrl
+      });
+      return;
+    }
+
+    await copyShareContent(`${shareText}\n\n${shareUrl}`);
+    showToast("Listado copiado. Pégalo en WhatsApp.");
+  } catch (error) {
+    if (error?.name === "AbortError") return;
+
+    try {
+      await copyShareContent(`${shareText}\n\n${shareUrl}`);
+      showToast("Listado copiado. Pégalo en WhatsApp.");
+    } catch {
+      showToast("No fue posible compartir el listado.");
+    }
+  }
+}
+
+function buildSharedListUrl(list) {
+  const payload = {
+    v: 1,
+    n: displayListName(list).slice(0, 80),
+    h: list.hymns
+  };
+  const encoded = encodeSharePayload(payload);
+  return `${window.location.origin}${window.location.pathname}#list=${encoded}`;
+}
+
+function buildWhatsAppShareText(list) {
+  const visibleHymns = list.hymns
+    .map((number) => hymns.find((item) => item.number === number))
+    .filter(Boolean);
+
+  const maximumLines = 30;
+  const lines = visibleHymns
+    .slice(0, maximumLines)
+    .map((hymn, index) => `${index + 1}. ${hymn.number}. ${hymn.title}`);
+
+  if (visibleHymns.length > maximumLines) {
+    lines.push(`… y ${visibleHymns.length - maximumLines} alabanzas más`);
+  }
+
+  return [
+    "🎶 *Himnario IBSI*",
+    `📋 *${displayListName(list)}*`,
+    "",
+    ...lines,
+    "",
+    "Abre el enlace para ver el listado y guardarlo en tu aplicación:"
+  ].join("\n");
+}
+
+async function copyShareContent(content) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(content);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = content;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const successful = document.execCommand("copy");
+  textarea.remove();
+
+  if (!successful) throw new Error("No se pudo copiar.");
+}
+
+function encodeSharePayload(payload) {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function decodeSharePayload(encoded) {
+  const normalized = encoded
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+  const padding = "=".repeat((4 - normalized.length % 4) % 4);
+  const binary = atob(normalized + padding);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function parseSharedListFromHash() {
+  const match = window.location.hash.match(/^#list=([A-Za-z0-9_-]+)$/);
+  if (!match) return null;
+
+  try {
+    const payload = decodeSharePayload(match[1]);
+    if (!payload || payload.v !== 1 || !Array.isArray(payload.h)) {
+      throw new Error("Formato de listado no válido.");
+    }
+
+    const allowedNumbers = new Set(hymns.map((hymn) => hymn.number));
+    const hymnNumbers = [...new Set(
+      payload.h
+        .map(Number)
+        .filter((number) => Number.isInteger(number) && allowedNumbers.has(number))
+    )];
+
+    if (hymnNumbers.length === 0) {
+      throw new Error("El listado compartido no contiene alabanzas válidas.");
+    }
+
+    return {
+      id: `shared-${Date.now()}`,
+      name: String(payload.n || "Listado compartido").slice(0, 80),
+      hymns: hymnNumbers,
+      shared: true
+    };
+  } catch (error) {
+    console.error(error);
+    history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    showToast("El enlace del listado no es válido.");
+    return null;
+  }
+}
+
+function renderSharedListModal() {
+  if (!sharedList) return;
+
+  elements.sharedListTitle.textContent = displayListName(sharedList);
+  elements.sharedListSummary.textContent =
+    `${sharedList.hymns.length} alabanza${sharedList.hymns.length === 1 ? "" : "s"} en orden.`;
+  elements.sharedListItems.innerHTML = "";
+  elements.openSharedListButton.disabled = sharedList.hymns.length === 0;
+  elements.saveSharedListButton.disabled = savedLists.length >= MAX_LISTS;
+  elements.saveSharedListButton.textContent = savedLists.length >= MAX_LISTS
+    ? "Límite de 5 listados"
+    : "Guardar en mis listados";
+
+  const fragment = document.createDocumentFragment();
+
+  sharedList.hymns.forEach((number, index) => {
+    const hymn = hymns.find((item) => item.number === number);
+    if (!hymn) return;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "shared-list-item";
+    button.innerHTML = `
+      <span class="shared-position">${index + 1}</span>
+      <strong>${hymn.number}. ${escapeHtml(hymn.title)}</strong>
+      <span class="open-mark">›</span>
+    `;
+    button.addEventListener("click", () => {
+      closeSharedListModal(false);
+      reopenSharedModalAfterViewer = true;
+      openViewer(hymn.number, { source: "shared", listId: sharedList.id });
+    });
+    fragment.appendChild(button);
+  });
+
+  elements.sharedListItems.appendChild(fragment);
+}
+
+function openSharedListModal() {
+  if (!sharedList) return;
+  renderSharedListModal();
+  elements.sharedListModal.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+
+function closeSharedListModal(clearLink) {
+  elements.sharedListModal.classList.add("hidden");
+  document.body.style.overflow = "";
+
+  if (clearLink) {
+    history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    sharedList = null;
+    reopenSharedModalAfterViewer = false;
+  }
+}
+
+function importSharedList() {
+  if (!sharedList) return;
+
+  if (savedLists.length >= MAX_LISTS) {
+    showToast("Ya tienes 5 listados. Elimina uno para guardar este.");
+    return;
+  }
+
+  const imported = createListObject(
+    uniqueImportedListName(displayListName(sharedList)),
+    sharedList.hymns
+  );
+
+  savedLists.push(imported);
+  activeListId = imported.id;
+  persistLists();
+
+  closeSharedListModal(true);
+  renderListManager();
+  switchView("setlist");
+  showToast("Listado compartido guardado.");
+}
+
+function uniqueImportedListName(baseName) {
+  const cleanBase = baseName.trim() || "Listado compartido";
+  if (!savedLists.some((list) => normalize(displayListName(list)) === normalize(cleanBase))) {
+    return cleanBase;
+  }
+
+  const sharedName = `${cleanBase} (compartido)`;
+  if (!savedLists.some((list) => normalize(displayListName(list)) === normalize(sharedName))) {
+    return sharedName;
+  }
+
+  let number = 2;
+  while (
+    savedLists.some(
+      (list) => normalize(displayListName(list)) === normalize(`${sharedName} ${number}`)
+    )
+  ) {
+    number += 1;
+  }
+
+  return `${sharedName} ${number}`;
 }
 
 function switchView(view) {
@@ -680,7 +1065,7 @@ function createListObject(name, hymnNumbers) {
   const now = Date.now();
   return {
     id: `list-${now}-${Math.random().toString(36).slice(2, 8)}`,
-    name: String(name || "Mi listado"),
+    name: String(name || "Listado 1"),
     hymns: [...new Set(hymnNumbers.filter(Number.isInteger))],
     createdAt: now,
     updatedAt: now
@@ -689,10 +1074,13 @@ function createListObject(name, hymnNumbers) {
 
 function loadSavedLists() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.savedLists) || "null");
+    const raw = localStorage.getItem(STORAGE_KEYS.savedLists);
 
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed.slice(0, MAX_LISTS).map((list, index) => ({
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+
+      const sanitized = parsed.slice(0, MAX_LISTS).map((list, index) => ({
         id: typeof list.id === "string" && list.id ? list.id : `list-restored-${index}`,
         name: typeof list.name === "string" ? list.name : `Listado ${index + 1}`,
         hymns: Array.isArray(list.hymns)
@@ -701,6 +1089,19 @@ function loadSavedLists() {
         createdAt: Number(list.createdAt) || Date.now(),
         updatedAt: Number(list.updatedAt) || Date.now()
       }));
+
+      const shouldRemoveAutomaticEmptyList =
+        !localStorage.getItem(STORAGE_KEYS.emptyDefaultCleaned) &&
+        sanitized.length === 1 &&
+        sanitized[0].hymns.length === 0 &&
+        ["mi listado", "listado 1"].includes(normalize(sanitized[0].name));
+
+      if (shouldRemoveAutomaticEmptyList) {
+        localStorage.setItem(STORAGE_KEYS.emptyDefaultCleaned, "true");
+        return [];
+      }
+
+      return sanitized;
     }
   } catch (error) {
     console.warn("No fue posible leer los listados guardados.", error);
@@ -721,6 +1122,10 @@ function loadSavedLists() {
   const legacyName =
     localStorage.getItem(STORAGE_KEYS.legacySetlistName) || "Mi listado";
 
+  if (legacyHymns.length === 0 && normalize(legacyName) === "mi listado") {
+    return [];
+  }
+
   return [createListObject(legacyName, legacyHymns)];
 }
 
@@ -733,8 +1138,11 @@ function loadActiveListId(lists) {
 
 function persistLists() {
   localStorage.setItem(STORAGE_KEYS.savedLists, JSON.stringify(savedLists));
+
   if (activeListId) {
     localStorage.setItem(STORAGE_KEYS.activeListId, activeListId);
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.activeListId);
   }
 }
 
@@ -789,7 +1197,7 @@ function showToast(message) {
   clearTimeout(showToast.timeoutId);
   showToast.timeoutId = setTimeout(() => {
     elements.toast.classList.add("hidden");
-  }, 2400);
+  }, 2600);
 }
 
 function updateConnectionState() {

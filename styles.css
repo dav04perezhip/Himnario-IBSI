@@ -40,7 +40,7 @@ button {
 
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.48;
+  opacity: 0.46;
 }
 
 button:focus-visible,
@@ -224,10 +224,12 @@ main {
 
 .primary,
 .secondary,
-.danger {
-  min-height: 2.65rem;
+.danger,
+.share-button,
+.secondary-dark {
+  min-height: 2.55rem;
   border-radius: 0.7rem;
-  padding: 0.65rem 0.85rem;
+  padding: 0.6rem 0.82rem;
   font-weight: 800;
 }
 
@@ -247,6 +249,18 @@ main {
   background: transparent;
 }
 
+.secondary-dark {
+  border: 1px solid var(--border);
+  color: var(--primary);
+  background: var(--surface-soft);
+}
+
+.share-button {
+  border: 1px solid #a7c4bd;
+  color: var(--primary);
+  background: #eef8f5;
+}
+
 .danger {
   border: 1px solid #d5b8b8;
   color: var(--danger);
@@ -254,14 +268,49 @@ main {
 }
 
 .compact {
-  min-height: 2.35rem;
-  padding: 0.45rem 0.7rem;
+  min-height: 2.3rem;
+  padding: 0.42rem 0.68rem;
   white-space: nowrap;
 }
 
 .list-manager-heading {
   align-items: center;
   margin: 0.35rem 0 1rem;
+}
+
+.no-lists-state {
+  display: grid;
+  justify-items: center;
+  max-width: 560px;
+  margin: 2rem auto;
+  border: 1px dashed var(--border);
+  border-radius: 1.1rem;
+  padding: clamp(1.4rem, 5vw, 2.5rem);
+  color: var(--muted);
+  background: rgba(255,255,255,0.5);
+  text-align: center;
+}
+
+.no-lists-state h3 {
+  margin: 0.6rem 0 0.35rem;
+  color: var(--text);
+}
+
+.no-lists-state p {
+  max-width: 430px;
+  margin: 0 0 1rem;
+}
+
+.no-lists-icon {
+  display: grid;
+  width: 3.4rem;
+  height: 3.4rem;
+  place-items: center;
+  border-radius: 1rem;
+  color: #fff;
+  background: var(--primary);
+  font-size: 1.6rem;
+  font-weight: 900;
 }
 
 .saved-lists-grid {
@@ -323,6 +372,13 @@ main {
 .active-list-heading {
   align-items: center;
   margin-bottom: 0.9rem;
+}
+
+.list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
 }
 
 .section-label {
@@ -418,8 +474,8 @@ main {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.65rem;
-  padding: max(0.65rem, env(safe-area-inset-top)) 0.75rem 0.65rem;
+  gap: 0.55rem;
+  padding: max(0.55rem, env(safe-area-inset-top)) 0.65rem 0.55rem;
   color: #fff;
   background: var(--primary);
 }
@@ -437,55 +493,58 @@ main {
 }
 
 .viewer-title-group span {
-  margin-top: 0.15rem;
+  margin-top: 0.12rem;
   color: #cde0dc;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
 }
 
 .icon-button {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.35rem;
+  height: 2.35rem;
   border: 1px solid rgba(255,255,255,0.35);
-  border-radius: 0.7rem;
+  border-radius: 0.65rem;
   color: #fff;
   background: transparent;
-  font-size: 1.25rem;
+  font-size: 1.2rem;
 }
 
 .transpose-toolbar {
   display: grid;
-  grid-template-columns: 2.8rem minmax(8rem, auto) 2.8rem auto;
+  grid-template-columns: 2.25rem minmax(0, 1fr) 2.25rem 2.25rem;
   align-items: center;
-  justify-content: center;
-  gap: 0.55rem;
-  padding: 0.55rem;
+  gap: 0.35rem;
+  min-height: 3.05rem;
+  padding: 0.3rem 0.45rem;
   color: #182523;
-  background: #fff8df;
+  background: #f6f0d9;
   border-bottom: 1px solid #d8c98d;
 }
 
 .transpose-toolbar button {
-  min-height: 2.45rem;
+  width: 2.25rem;
+  height: 2.25rem;
   border: 1px solid #cbb96f;
-  border-radius: 0.65rem;
+  border-radius: 0.62rem;
   color: #123f46;
-  background: #ffffff;
+  background: #fff;
   font-weight: 900;
 }
 
-.transpose-toolbar > button:not(.reset-transpose) {
-  font-size: 1.35rem;
+.tone-button {
+  font-size: 1.25rem;
 }
 
 .reset-transpose {
-  padding: 0.45rem 0.75rem;
+  font-size: 1.1rem;
 }
 
 .key-display {
-  display: grid;
-  min-width: 8rem;
-  justify-items: center;
-  line-height: 1.05;
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.38rem;
+  line-height: 1;
 }
 
 .key-display span,
@@ -495,17 +554,22 @@ main {
 }
 
 .key-display strong {
-  margin: 0.14rem 0;
   color: #123f46;
-  font-size: 1.4rem;
+  font-size: 1.25rem;
+}
+
+.key-display small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .setlist-navigation {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: stretch;
-  gap: 0.5rem;
-  padding: 0.5rem;
+  gap: 0.4rem;
+  padding: 0.38rem 0.45rem;
   background: #edf2f0;
   border-bottom: 1px solid #cbd4d1;
 }
@@ -513,10 +577,11 @@ main {
 .song-nav-button {
   display: grid;
   min-width: 0;
+  min-height: 3.25rem;
   align-content: center;
   border: 1px solid var(--border);
-  border-radius: 0.7rem;
-  padding: 0.45rem 0.65rem;
+  border-radius: 0.65rem;
+  padding: 0.38rem 0.55rem;
   color: var(--primary);
   background: #fff;
   text-align: left;
@@ -527,25 +592,25 @@ main {
 }
 
 .song-nav-button span {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 800;
   text-transform: uppercase;
 }
 
 .song-nav-button strong {
-  margin-top: 0.15rem;
+  margin-top: 0.1rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
 }
 
 .setlist-position {
   display: grid;
-  min-width: 4.6rem;
+  min-width: 4.2rem;
   place-items: center;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 900;
 }
 
@@ -556,18 +621,18 @@ main {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: clamp(0.35rem, 2vw, 1.15rem);
+  padding: clamp(0.15rem, 1vw, 0.6rem);
   background: #dfe5e3;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
 
 .transposed-sheet {
-  width: min(100%, 820px);
+  width: min(100%, 920px);
   max-width: 100%;
   margin: 0 auto;
-  color: #111111;
-  background: #ffffff;
+  color: #111;
+  background: #fff;
   box-shadow: var(--shadow);
   text-align: left;
 }
@@ -576,8 +641,113 @@ main {
   display: block;
   width: 100%;
   height: auto;
-  background: #ffffff;
+  background: #fff;
   overflow: visible;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  place-items: center;
+  padding: max(0.8rem, env(safe-area-inset-top)) 0.8rem max(0.8rem, env(safe-area-inset-bottom));
+  background: rgba(6, 18, 17, 0.78);
+  backdrop-filter: blur(4px);
+}
+
+.shared-list-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(100%, 650px);
+  max-height: min(88vh, 780px);
+  overflow: hidden;
+  border-radius: 1.1rem;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(0,0,0,0.35);
+}
+
+.shared-list-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.shared-list-header h2 {
+  margin: 0.18rem 0 0.2rem;
+}
+
+.shared-list-header p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.modal-close {
+  flex: 0 0 auto;
+  width: 2.3rem;
+  height: 2.3rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  color: var(--primary);
+  background: var(--surface-soft);
+  font-size: 1.35rem;
+}
+
+.shared-list-items {
+  overflow: auto;
+  padding: 0.65rem 1rem;
+}
+
+.shared-list-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0.7rem 0;
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+}
+
+.shared-list-item:last-child {
+  border-bottom: 0;
+}
+
+.shared-list-item .shared-position {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 0.55rem;
+  color: #fff;
+  background: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.shared-list-item strong {
+  overflow-wrap: anywhere;
+}
+
+.shared-list-item .open-mark {
+  color: var(--primary);
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.shared-list-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  padding: 0.8rem 1rem 1rem;
+  border-top: 1px solid var(--border);
 }
 
 .update-banner {
@@ -617,10 +787,10 @@ main {
 
 .toast {
   position: fixed;
-  z-index: 150;
+  z-index: 220;
   left: 50%;
   bottom: max(1.25rem, env(safe-area-inset-bottom));
-  width: min(calc(100% - 2rem), 420px);
+  width: min(calc(100% - 2rem), 440px);
   transform: translateX(-50%);
   border-radius: 0.75rem;
   padding: 0.8rem 1rem;
@@ -702,19 +872,19 @@ main {
     flex-direction: column;
   }
 
-  .active-list-heading .danger {
-    width: 100%;
+  .list-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .viewer-toolbar {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 0.45rem;
-    padding-inline: 0.5rem;
+    gap: 0.4rem;
+    padding-inline: 0.45rem;
   }
 
   .viewer-toolbar .compact {
-    padding-inline: 0.55rem;
-    font-size: 0.78rem;
+    padding-inline: 0.5rem;
+    font-size: 0.76rem;
   }
 
   .viewer-title-group span {
@@ -722,21 +892,36 @@ main {
   }
 
   .transpose-toolbar {
-    grid-template-columns: 2.7rem minmax(7.2rem, 1fr) 2.7rem;
+    grid-template-columns: 2.2rem minmax(0, 1fr) 2.2rem 2.2rem;
+    padding-inline: 0.35rem;
   }
 
-  .reset-transpose {
-    grid-column: 1 / -1;
+  .transpose-toolbar button {
+    width: 2.2rem;
+    height: 2.2rem;
+  }
+
+  .key-display {
+    gap: 0.28rem;
+  }
+
+  .key-display strong {
+    font-size: 1.18rem;
+  }
+
+  .key-display small {
+    max-width: 7.2rem;
   }
 
   .setlist-navigation {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding: 0.32rem 0.35rem;
   }
 
   .setlist-position {
     grid-column: 1 / -1;
     grid-row: 1;
-    min-height: 1.6rem;
+    min-height: 1.25rem;
   }
 
   .song-nav-button.previous {
@@ -749,16 +934,25 @@ main {
     grid-row: 2;
   }
 
+  .song-nav-button {
+    min-height: 2.9rem;
+  }
+
   .song-nav-button strong {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
   }
 
   .page-viewport {
-    padding: 0.25rem;
+    padding: 0.08rem;
   }
 
   .transposed-sheet {
+    width: 100%;
     box-shadow: none;
+  }
+
+  .shared-list-actions {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -784,9 +978,19 @@ main {
     background: #2b1d1d;
   }
 
+  .share-button {
+    color: #dff4ee;
+    background: #1d342f;
+    border-color: #365e54;
+  }
+
+  .no-lists-state {
+    background: rgba(255,255,255,0.03);
+  }
+
   .transpose-toolbar {
     color: #f2f7f5;
-    background: #332f20;
+    background: #2d2a1e;
     border-bottom-color: #514b31;
   }
 
