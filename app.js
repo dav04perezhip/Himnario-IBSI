@@ -1,5 +1,5 @@
 const MAX_LISTS = 5;
-const APP_VERSION = "2.7";
+const APP_VERSION = "2.8";
 
 const STORAGE_KEYS = {
   legacySetlist: "ibsi-setlist-v1",
@@ -725,6 +725,7 @@ function renderTransposedSheet() {
     textElement.setAttribute("font-family", fontFamily);
     textElement.setAttribute("font-weight", String(item.fontWeight));
     textElement.setAttribute("font-style", item.fontStyle || "normal");
+    if (item.textAnchor) textElement.setAttribute("text-anchor", item.textAnchor);
     textElement.setAttribute("fill", item.color || (isChordElement ? "#075e6a" : "#111111"));
     textElement.setAttribute("text-rendering", "geometricPrecision");
     textElement.textContent = text;

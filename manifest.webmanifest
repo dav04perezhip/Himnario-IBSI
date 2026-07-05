@@ -3,7 +3,7 @@
   "short_name": "Himnario",
   "description": "Himnario musical IBSI con 216 alabanzas, artistas, listados compartibles y transposición de acordes.",
   "lang": "es",
-  "start_url": "./?version=2.7",
+  "start_url": "./?version=2.8",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f3f5f3",

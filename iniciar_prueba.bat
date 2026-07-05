@@ -2,16 +2,16 @@
 title Himnario IBSI - Servidor local
 where py >nul 2>nul
 if %errorlevel%==0 (
-  echo Abriendo Himnario IBSI en http://localhost:8000/?version=2.7
-  start "" http://localhost:8000/?version=2.7
+  echo Abriendo Himnario IBSI en http://localhost:8000/?version=2.8
+  start "" http://localhost:8000/?version=2.8
   py -m http.server 8000
   goto :eof
 )
 
 where python >nul 2>nul
 if %errorlevel%==0 (
-  echo Abriendo Himnario IBSI en http://localhost:8000/?version=2.7
-  start "" http://localhost:8000/?version=2.7
+  echo Abriendo Himnario IBSI en http://localhost:8000/?version=2.8
+  start "" http://localhost:8000/?version=2.8
   python -m http.server 8000
   goto :eof
 )
