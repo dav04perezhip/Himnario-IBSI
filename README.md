@@ -1,32 +1,22 @@
-# Himnario IBSI — versión 2.3
+# Himnario IBSI — versión 2.4
 
-## Nuevas alabanzas
+## Ajuste del formato de las alabanzas 215–217
 
-215. **De Rodillas** — Ericson Alexander Molano  
-   Autor: Freddy Perez  
-   Tono original: G
+Se corrigió el formato de **De Rodillas**, **Bondad de Dios** y **El Cordero y el León** para que sigan el mismo estilo visual de las alabanzas anteriores del himnario:
 
-216. **Bondad de Dios** — Bethel Music  
-   Autores: Ed Cash, Ben Fielding, Jason Ingram y Brian Johnson  
-   Tono original configurado: **A**  
-   La imagen recibida estaba en A#, por lo que todos los acordes se bajaron un semitono.
+- contenido centrado;
+- tipografía y distribución similares a las alabanzas originales;
+- acordes recolocados para quedar sobre la palabra o sílaba correspondiente;
+- mantenimiento completo de la transposición.
 
-217. **El Cordero y el León** — Twice ft. Evan Craft  
-   Tono original: A
+## Alabanzas incluidas
 
-## Mejoras
+- 215. De Rodillas — Ericson Alexander Molano
+- 216. Bondad de Dios — Bethel Music (tono original ajustado a A)
+- 217. El Cordero y el León — Twice ft. Evan Craft
 
-- El catálogo ahora muestra el artista de las nuevas alabanzas.
-- Se puede buscar por número, título, artista o autor.
-- El artista aparece al abrir la alabanza, en los listados y en los enlaces compartidos.
-- Las tres nuevas letras conservan los acordes alineados y son completamente transponibles.
-- Se mantienen las funciones de la versión 2.2: hasta cinco listados, compartir por WhatsApp, navegación anterior/siguiente y funcionamiento sin conexión.
+## Publicación
 
-## Actualizar con GitHub Desktop
+Reemplaza los archivos del proyecto local por los de esta versión, conserva la carpeta `.git`, luego realiza:
 
-1. Descomprime este ZIP.
-2. Abre la carpeta local clonada de `Himnario-IBSI`.
-3. Conserva la carpeta oculta `.git`.
-4. Reemplaza los demás archivos por el contenido de esta versión.
-5. En GitHub Desktop escribe: `Agregar alabanzas 215 a 217`.
-6. Pulsa **Commit to main** y después **Push origin**.
+`Actualizar Himnario IBSI a versión 2.4`
