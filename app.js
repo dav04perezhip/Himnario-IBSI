@@ -1,5 +1,5 @@
 const MAX_LISTS = 5;
-const APP_VERSION = "2.4";
+const APP_VERSION = "2.5";
 
 const STORAGE_KEYS = {
   legacySetlist: "ibsi-setlist-v1",
@@ -105,6 +105,7 @@ async function init() {
 
     hymns = await hymnResponse.json();
     hymnLayouts = await layoutResponse.json();
+    cleanSavedListsAgainstCatalog();
     renderCatalog(hymns);
     renderListManager();
 
@@ -269,6 +270,22 @@ function wireEvents() {
     if (isViewerListContext() && event.key === "ArrowLeft") navigateSetlist(-1);
     if (isViewerListContext() && event.key === "ArrowRight") navigateSetlist(1);
   });
+}
+
+function cleanSavedListsAgainstCatalog() {
+  const validNumbers = new Set(hymns.map((hymn) => hymn.number));
+  let changed = false;
+
+  savedLists.forEach((list) => {
+    const cleaned = list.hymns.filter((number) => validNumbers.has(number));
+    if (cleaned.length !== list.hymns.length) {
+      list.hymns = cleaned;
+      list.updatedAt = Date.now();
+      changed = true;
+    }
+  });
+
+  if (changed) persistLists();
 }
 
 function renderCatalog(items) {

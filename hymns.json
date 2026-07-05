@@ -1287,8 +1287,6 @@
     "number": 215,
     "title": "De Rodillas",
     "artist": "Ericson Alexander Molano",
-    "author": "Freddy Perez",
-    "album": "Ha Vencido (2019)",
     "originalKey": "G",
     "preferFlats": false
   },
@@ -1296,16 +1294,6 @@
     "number": 216,
     "title": "Bondad de Dios",
     "artist": "Bethel Music",
-    "author": "Ed Cash; Ben Fielding; Jason Ingram; Brian Johnson",
-    "album": "Without Words: Genesis (2018)",
-    "originalKey": "A",
-    "preferFlats": false
-  },
-  {
-    "number": 217,
-    "title": "El Cordero y el León",
-    "artist": "Twice ft. Evan Craft",
-    "album": "Desconocido (2016)",
     "originalKey": "A",
     "preferFlats": false
   }

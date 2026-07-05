@@ -1,14 +1,11 @@
 # Formato para nuevas alabanzas
 
-Cada nueva alabanza debe añadirse con:
+Para las nuevas alabanzas, el documento Word proporcionado será la fuente principal para:
 
-- Número consecutivo.
-- Título exactamente como aparece en la imagen.
-- Artista, autor o créditos disponibles.
-- Tono original indicado por el usuario.
-- Letra y acordes alineados mediante posiciones fijas.
-- Acordes separados como elementos transponibles.
-- Compatibilidad con teléfono, tableta y computadora.
-- Integración con buscador, listados personales y enlaces compartidos.
+- letra exacta;
+- espacios y separación entre fragmentos;
+- ubicación de cada acorde;
+- título y artista;
+- secciones como coro, pre-coro y puente.
 
-No se deben sustituir las letras por una captura estática, porque perderían la función de transposición.
+La aplicación debe convertir ese contenido al mismo formato visual centrado de las alabanzas existentes, manteniendo cada acorde como elemento transponible. No se deben reconstruir los acordes por interpretación cuando el Word ya contiene la posición exacta.
