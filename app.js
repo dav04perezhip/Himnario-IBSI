@@ -1,5 +1,5 @@
 const MAX_LISTS = 5;
-const APP_VERSION = "2.5";
+const APP_VERSION = "2.6";
 
 const STORAGE_KEYS = {
   legacySetlist: "ibsi-setlist-v1",
