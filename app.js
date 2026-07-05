@@ -1,5 +1,5 @@
 const MAX_LISTS = 5;
-const APP_VERSION = "2.2";
+const APP_VERSION = "2.3";
 
 const STORAGE_KEYS = {
   legacySetlist: "ibsi-setlist-v1",
@@ -132,7 +132,12 @@ function wireEvents() {
   elements.searchInput.addEventListener("input", () => {
     const query = normalize(elements.searchInput.value.trim());
     const filtered = hymns.filter((hymn) => {
-      return String(hymn.number).includes(query) || normalize(hymn.title).includes(query);
+      return (
+        String(hymn.number).includes(query) ||
+        normalize(hymn.title).includes(query) ||
+        normalize(hymn.artist || "").includes(query) ||
+        normalize(hymn.author || "").includes(query)
+      );
     });
     renderCatalog(filtered);
   });
@@ -270,7 +275,7 @@ function renderCatalog(items) {
   elements.hymnGrid.innerHTML = "";
   elements.emptySearch.classList.toggle("hidden", items.length > 0);
   elements.catalogCount.textContent = items.length === hymns.length
-    ? `${hymns.length} alabanzas disponibles. Busca por número o nombre.`
+    ? `${hymns.length} alabanzas disponibles. Busca por número, nombre o artista.`
     : `${items.length} resultado${items.length === 1 ? "" : "s"} encontrado${items.length === 1 ? "" : "s"}.`;
 
   const fragment = document.createDocumentFragment();
@@ -280,7 +285,10 @@ function renderCatalog(items) {
     card.className = "hymn-card";
     card.innerHTML = `
       <span class="hymn-number">${hymn.number}</span>
-      <h3>${escapeHtml(hymn.title)}</h3>
+      <div class="hymn-card-copy">
+        <h3>${escapeHtml(hymn.title)}</h3>
+        ${hymn.artist ? `<p>${escapeHtml(hymn.artist)}</p>` : ""}
+      </div>
       <button class="card-open" type="button" aria-label="Abrir ${escapeHtml(hymn.title)}">›</button>
     `;
 
@@ -364,6 +372,7 @@ function renderActiveList() {
       <span class="position">${index + 1}</span>
       <div class="setlist-title-block">
         <h3>${hymn.number}. ${escapeHtml(hymn.title)}</h3>
+        ${hymn.artist ? `<p class="setlist-artist">${escapeHtml(hymn.artist)}</p>` : ""}
         <p class="setlist-key">Tono: ${escapeHtml(selectedKey)}</p>
       </div>
       <div class="row-actions">
@@ -506,9 +515,10 @@ function openViewer(number, context = { source: "catalog", listId: null }) {
 
   const contextList = getViewerList();
   elements.viewerTitle.textContent = hymn.title;
+  const artistLabel = hymn.artist ? hymn.artist : "Himnario IBSI";
   elements.viewerSubtitle.textContent = contextList
-    ? `${displayListName(contextList)} · Alabanza ${hymn.number}`
-    : `Himnario IBSI · Alabanza ${hymn.number}`;
+    ? `${displayListName(contextList)} · ${artistLabel} · Alabanza ${hymn.number}`
+    : `${artistLabel} · Alabanza ${hymn.number}`;
 
   elements.viewer.classList.remove("hidden");
   document.body.style.overflow = "hidden";
@@ -689,15 +699,16 @@ function renderTransposedSheet() {
     textElement.setAttribute("x", String(item.x));
     textElement.setAttribute("y", String(item.y));
     textElement.setAttribute("font-size", String(item.fontSize));
-    textElement.setAttribute(
-      "font-family",
+    const fontFamily =
       item.fontFamily === "Arial"
         ? "Arial, Helvetica, sans-serif"
-        : "'Times New Roman', Times, serif"
-    );
+        : item.fontFamily === "Courier New"
+          ? "'Courier New', Courier, monospace"
+          : "'Times New Roman', Times, serif";
+    textElement.setAttribute("font-family", fontFamily);
     textElement.setAttribute("font-weight", String(item.fontWeight));
     textElement.setAttribute("font-style", item.fontStyle || "normal");
-    textElement.setAttribute("fill", isChordElement ? "#075e6a" : "#111111");
+    textElement.setAttribute("fill", item.color || (isChordElement ? "#075e6a" : "#111111"));
     textElement.setAttribute("text-rendering", "geometricPrecision");
     textElement.textContent = text;
     group.appendChild(textElement);
@@ -859,7 +870,10 @@ function buildWhatsAppShareText(list) {
   const maximumLines = 30;
   const lines = visibleHymns
     .slice(0, maximumLines)
-    .map((hymn, index) => `${index + 1}. ${hymn.number}. ${hymn.title}`);
+    .map((hymn, index) => {
+      const artist = hymn.artist ? ` — ${hymn.artist}` : "";
+      return `${index + 1}. ${hymn.number}. ${hymn.title}${artist}`;
+    });
 
   if (visibleHymns.length > maximumLines) {
     lines.push(`… y ${visibleHymns.length - maximumLines} alabanzas más`);
@@ -974,7 +988,10 @@ function renderSharedListModal() {
     button.className = "shared-list-item";
     button.innerHTML = `
       <span class="shared-position">${index + 1}</span>
-      <strong>${hymn.number}. ${escapeHtml(hymn.title)}</strong>
+      <span class="shared-list-copy">
+        <strong>${hymn.number}. ${escapeHtml(hymn.title)}</strong>
+        ${hymn.artist ? `<small>${escapeHtml(hymn.artist)}</small>` : ""}
+      </span>
       <span class="open-mark">›</span>
     `;
     button.addEventListener("click", () => {

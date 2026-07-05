@@ -1,30 +1,32 @@
-# Himnario IBSI — versión 2.2
+# Himnario IBSI — versión 2.3
 
-## Cambios de esta versión
+## Nuevas alabanzas
 
-- Controles de tono más pequeños y minimalistas.
-- Las alabanzas aprovechan mejor el ancho del teléfono: se recortan automáticamente los márgenes vacíos del formato original sin mover las letras ni los acordes.
-- Las alabanzas cortas ya no quedan pequeñas en el centro de una hoja con demasiado espacio.
-- Un usuario nuevo comienza con **0 listados**. El primer listado se crea únicamente cuando la persona lo solicita.
-- Se mantienen hasta **5 listados**.
-- Cada listado puede compartirse mediante WhatsApp u otras aplicaciones.
-- El mensaje compartido incluye el nombre y el orden de las alabanzas.
-- Al abrir el enlace, la otra persona puede:
-  - ver el listado;
-  - abrirlo y navegar entre alabanzas;
-  - guardarlo dentro de su propia aplicación.
-- Se mantienen la transposición, la navegación anterior/siguiente y el funcionamiento sin conexión.
+215. **De Rodillas** — Ericson Alexander Molano  
+   Autor: Freddy Perez  
+   Tono original: G
 
-## Actualizar el repositorio usando GitHub Desktop
+216. **Bondad de Dios** — Bethel Music  
+   Autores: Ed Cash, Ben Fielding, Jason Ingram y Brian Johnson  
+   Tono original configurado: **A**  
+   La imagen recibida estaba en A#, por lo que todos los acordes se bajaron un semitono.
 
-Esta versión utiliza nombres estables (`app.js`, `styles.css`, `hymns.json`, etc.) para no acumular archivos por cada versión.
+217. **El Cordero y el León** — Twice ft. Evan Craft  
+   Tono original: A
 
-1. Abre la carpeta local del repositorio desde GitHub Desktop.
-2. Conserva únicamente la carpeta oculta `.git`.
-3. Elimina el resto de los archivos visibles del proyecto.
-4. Copia dentro de esa carpeta todo el contenido de esta versión.
-5. Regresa a GitHub Desktop.
-6. Escribe el resumen: `Actualizar Himnario IBSI a versión 2.2`.
-7. Pulsa **Commit to main** y luego **Push origin**.
+## Mejoras
 
-Tus listados y tonos no se pierden porque están almacenados en el navegador de cada dispositivo.
+- El catálogo ahora muestra el artista de las nuevas alabanzas.
+- Se puede buscar por número, título, artista o autor.
+- El artista aparece al abrir la alabanza, en los listados y en los enlaces compartidos.
+- Las tres nuevas letras conservan los acordes alineados y son completamente transponibles.
+- Se mantienen las funciones de la versión 2.2: hasta cinco listados, compartir por WhatsApp, navegación anterior/siguiente y funcionamiento sin conexión.
+
+## Actualizar con GitHub Desktop
+
+1. Descomprime este ZIP.
+2. Abre la carpeta local clonada de `Himnario-IBSI`.
+3. Conserva la carpeta oculta `.git`.
+4. Reemplaza los demás archivos por el contenido de esta versión.
+5. En GitHub Desktop escribe: `Agregar alabanzas 215 a 217`.
+6. Pulsa **Commit to main** y después **Push origin**.

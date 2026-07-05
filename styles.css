@@ -205,10 +205,24 @@ main {
   font-weight: 800;
 }
 
+.hymn-card-copy {
+  min-width: 0;
+}
+
 .hymn-card h3 {
   margin: 0;
   overflow-wrap: anywhere;
   font-size: 0.98rem;
+}
+
+.hymn-card-copy p {
+  margin: 0.2rem 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card-open {
@@ -432,11 +446,16 @@ main {
   font-size: 0.98rem;
 }
 
+.setlist-artist,
 .setlist-key {
-  margin: 0.2rem 0 0;
+  margin: 0.18rem 0 0;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
+}
+
+.setlist-key {
+  color: var(--primary);
 }
 
 .row-actions {
@@ -732,8 +751,26 @@ main {
   font-weight: 900;
 }
 
-.shared-list-item strong {
+.shared-list-copy {
+  min-width: 0;
+}
+
+.shared-list-copy strong,
+.shared-list-copy small {
+  display: block;
+}
+
+.shared-list-copy strong {
   overflow-wrap: anywhere;
+}
+
+.shared-list-copy small {
+  margin-top: 0.16rem;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shared-list-item .open-mark {
