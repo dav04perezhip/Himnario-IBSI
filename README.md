@@ -1,4 +1,4 @@
-# Himnario IBSI - versión 3.6
+# Himnario IBSI - versión 3.7
 
 Aplicación web progresiva del Himnario IBSI con las alabanzas originales (1–214) y las nuevas desde la 215.
 

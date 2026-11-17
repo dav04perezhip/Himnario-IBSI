@@ -53,7 +53,9 @@ function groupRows(items) {
   });
   rows.forEach((row) => {
     row.items.sort((a, b) => a.x - b.x);
-    row.isChordRow = row.items.every((i) => i.isChord);
+    // Una fila de acordes puede traer guiones entre acordes ("D - G - D"): también cuenta.
+    row.isChordRow = row.items.some((i) => i.isChord) &&
+      row.items.every((i) => i.isChord || i.isSeparator || /^[-–—/]+$/.test(i.text));
   });
   return rows;
 }
@@ -180,9 +182,13 @@ function convert(number, layout) {
       line = buildLyricLine(row).text;
     }
 
-    const lineY = row.y;
+    // Se mide la altura de la LETRA de cada línea (no la de los acordes), para que las
+    // líneas sin acordes no parezcan separadas del resto.
+    const lineY = usedRows === 2 ? next.y : row.isChordRow ? row.y + 13.5 : row.y;
     if (prevY !== null) gaps.push(lineY - prevY);
     prevY = lineY;
+    // En las notas ("NOTA: … A SOL MAYOR") la palabra "A" no es un acorde.
+    if (/^\s*NOTA\b/i.test(line.replace(/\[[^\]]*\]/g, ""))) line = line.replace(/\[([^\]]*)\]/g, "$1");
     lines.push({ y: lineY, text: line });
     i += usedRows - 1;
   }
@@ -199,7 +205,7 @@ function convert(number, layout) {
   const bodyLines = [];
   let lastEnd = null;
   lines.forEach((line, idx) => {
-    if (idx > 0 && line.y - lastEnd > typicalGap * 1.45) bodyLines.push("");
+    if (idx > 0 && line.y - lastEnd > typicalGap * 1.3) bodyLines.push("");
     bodyLines.push(line.text);
     lastEnd = line.y;
   });

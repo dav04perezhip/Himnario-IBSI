@@ -1186,8 +1186,30 @@ main {
 }
 
 .cs-stanza {
-  margin-bottom: 1.15em;
+  margin-bottom: 1.9em;
   break-inside: avoid;
+}
+
+.cs-stanza:last-child {
+  margin-bottom: 0;
+}
+
+.cs-stanza.cs-chorus {
+  padding-left: 0.75em;
+  border-left: 3px solid #e3cf8f;
+  border-radius: 0;
+}
+
+.cs-stanza.cs-note {
+  color: #5b6966;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.72em;
+  font-style: italic;
+}
+
+.cs-stanza.cs-verse .cs-section {
+  color: var(--chord-color);
+  background: #e3f0ee;
 }
 
 .cs-section {
@@ -1547,5 +1569,21 @@ main {
 @media (hover: none) and (pointer: coarse) {
   .transpose-toolbar .font-button {
     display: none;
+  }
+}
+
+/* Sin zoom por doble toque (se puede tocar rápido sin que la página se agrande). */
+html,
+body {
+  touch-action: manipulation;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cs-stanza.cs-chorus {
+    border-left-color: #6b5c2c;
+  }
+
+  .cs-stanza.cs-verse .cs-section {
+    background: #1d3532;
   }
 }

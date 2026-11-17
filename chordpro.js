@@ -52,10 +52,26 @@
           return;
         }
 
-        const prefix = SECTION_PREFIX.exec(text);
-        if (prefix && !/\[/.test(prefix[1])) {
+        // "CORO: letra…", también con acordes pegados a la etiqueta ("CORO[G]: …", "CORO:[A] …").
+        const prefix = SECTION_PREFIX.exec(plain);
+        if (prefix) {
+          let consumed = 0;
+          let index = 0;
+          let movedChords = "";
+          while (index < text.length && consumed < prefix[0].length) {
+            if (text[index] === "[") {
+              const close = text.indexOf("]", index);
+              if (close < 0) break;
+              movedChords += text.slice(index, close + 1);
+              index = close + 1;
+              continue;
+            }
+            index += 1;
+            consumed += 1;
+          }
           lines.push({ type: "section", text: prefix[1].trim() });
-          text = text.slice(prefix[0].length);
+          text = movedChords + text.slice(index);
+          if (!text.trim()) return;
         }
 
         lines.push({ type: "lyric", segments: splitSegments(text) });
@@ -99,33 +115,65 @@
     const container = document.createElement("div");
     container.className = "chord-sheet-body";
 
-    let stanza = document.createElement("div");
-    stanza.className = "cs-stanza";
-    const flushStanza = () => {
-      if (stanza.childNodes.length) container.appendChild(stanza);
-      stanza = document.createElement("div");
-      stanza.className = "cs-stanza";
-    };
-
-    parsed.lines.forEach((line) => {
-      if (line.type === "empty") {
-        flushStanza();
-        return;
-      }
-
-      if (line.type === "section") {
-        flushStanza();
+    groupStanzas(parsed.lines).forEach((group) => {
+      const stanza = document.createElement("section");
+      stanza.className = `cs-stanza${group.kind ? ` cs-${group.kind}` : ""}`;
+      if (group.label) {
         const label = document.createElement("div");
         label.className = "cs-section";
-        label.textContent = line.text.replace(/:\s*$/, "");
+        label.textContent = group.label;
         stanza.appendChild(label);
+      }
+      group.lines.forEach((line) => stanza.appendChild(renderLine(line.segments, transpose, showChords)));
+      container.appendChild(stanza);
+    });
+    return container;
+  }
+
+  // Agrupa las líneas en bloques (separados por línea vacía o por una etiqueta como CORO).
+  // Los bloques con letra que no traen etiqueta se numeran: Estrofa 1, Estrofa 2…
+  function groupStanzas(lines) {
+    const groups = [];
+    let current = { label: "", lines: [] };
+    const close = () => {
+      if (current.lines.length) groups.push(current);
+      else if (current.label && groups.length === 0) groups.push(current);
+      current = { label: "", lines: [] };
+    };
+
+    lines.forEach((line) => {
+      if (line.type === "empty") {
+        close();
+      } else if (line.type === "section") {
+        if (current.lines.length) close();
+        current.label = line.text.replace(/:\s*$/, "").trim();
+      } else {
+        current.lines.push(line);
+      }
+    });
+    close();
+
+    const lineText = (l) => l.segments.map((s) => s.text).join("");
+    const hasLyrics = (group) => group.lines.some((l) => lineText(l).trim());
+    groups.forEach((group) => {
+      if (group.lines.length && /^\s*nota\b/i.test(lineText(group.lines[0]))) group.kind = "note";
+    });
+    const lyricGroups = groups.filter((g) => hasLyrics(g) && g.kind !== "note");
+    const lastLyric = lyricGroups[lyricGroups.length - 1];
+    let verse = 0;
+    groups.forEach((group) => {
+      if (/^coro/i.test(group.label) || /^estribillo/i.test(group.label)) group.kind = "chorus";
+      if (group.label || group.kind === "note" || !hasLyrics(group) || lyricGroups.length < 2) return;
+      // Una sola línea al final, después de varias estrofas: es el cierre de la alabanza.
+      if (group === lastLyric && group.lines.length === 1 && lyricGroups.length >= 3) {
+        group.label = "Final";
         return;
       }
-
-      stanza.appendChild(renderLine(line.segments, transpose, showChords));
+      verse += 1;
+      group.label = `Estrofa ${verse}`;
+      group.kind = "verse";
     });
-    flushStanza();
-    return container;
+    return groups;
   }
 
   function renderLine(segments, transpose, showChords) {

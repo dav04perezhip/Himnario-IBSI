@@ -1,5 +1,5 @@
 const MAX_LISTS = 5;
-const APP_VERSION = "3.6";
+const APP_VERSION = "3.7";
 const CUSTOM_HYMN_START = 1001;
 // Las 1–214 son las originales: no se pueden eliminar. De la 215 en adelante viven en
 // Cloudflare y solo un administrador las elimina (por completo, y las siguientes se recorren).
