@@ -1,3 +1,4 @@
+-- ⚠ CUIDADO: este archivo BORRA la tabla y todas las alabanzas publicadas. Solo para crear la base desde cero.
 -- Alabanzas de la 215 en adelante (las 1–214 son las originales y viven en la app).
 -- `id` nunca cambia; `number` se recorre cuando se elimina una alabanza.
 DROP TABLE IF EXISTS songs;
