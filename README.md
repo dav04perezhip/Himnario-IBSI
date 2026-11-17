@@ -8,5 +8,8 @@ Aplicación web progresiva del Himnario IBSI con 220 alabanzas.
 - Transposición de acordes y tamaño de letra ajustable.
 - Agregar alabanzas pegándolas desde LaCuerda.net y publicarlas para todos (ver `FORMATO_NUEVAS_ALABANZAS.md`).
 - Las alabanzas publicadas se guardan en Cloudflare (carpeta `api/`).
+
+Dirección: https://himnario-ibsi.hiptank-news.workers.dev/ (Cloudflare). La de GitHub Pages solo muestra el aviso de mudanza.
+Publicar a mano: `npx wrangler deploy` en esta carpeta (o automático al subir a GitHub si está conectado en Cloudflare).
 - Creación, guardado y uso compartido de listados.
 - Instalación como aplicación y funcionamiento sin conexión.

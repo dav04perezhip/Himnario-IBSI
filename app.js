@@ -3,7 +3,9 @@ const APP_VERSION = "3.4";
 const CUSTOM_HYMN_START = 1001;
 // Botón de eliminar en el catálogo (en prueba). Para quitarlo, cambiar a false.
 const ENABLE_DELETE_HYMNS = true;
-const PUBLIC_URL = "https://dav04perezhip.github.io/Himnario-IBSI/";
+// Dirección oficial del himnario (Cloudflare). La de GitHub Pages queda solo para avisar de la mudanza.
+const PUBLIC_URL = "https://himnario-ibsi.hiptank-news.workers.dev/";
+const OLD_HOSTS = ["dav04perezhip.github.io"];
 // Servicio en Cloudflare donde se guardan las alabanzas publicadas para todos (carpeta api/).
 const SHARED_API = "https://himnario-ibsi-api.hiptank-news.workers.dev";
 const SHARED_FIRST_NUMBER = 221;
@@ -108,6 +110,8 @@ const elements = {
   catalogCount: document.querySelector("#catalogCount"),
   updateBanner: document.querySelector("#updateBanner"),
   updateButton: document.querySelector("#updateButton"),
+  moveBanner: document.querySelector("#moveBanner"),
+  moveButton: document.querySelector("#moveButton"),
   fontSmaller: document.querySelector("#fontSmaller"),
   fontLarger: document.querySelector("#fontLarger"),
   viewModeButton: document.querySelector("#viewModeButton"),
@@ -159,6 +163,9 @@ async function init() {
     cleanSavedListsAgainstCatalog();
     renderCatalog(hymns);
     renderListManager();
+
+    if (/^#migrar=/.test(window.location.hash)) await receiveMigration();
+    showMoveBannerIfOldAddress();
 
     const receivedSongs = /^#songs=/.test(window.location.hash);
     const sharedPayload = receivedSongs ? null : parseSharedListFromHash();
@@ -1568,6 +1575,93 @@ function renderCatalogTools() {
   elements.sendCustomHymnsButton.textContent =
     `Enviar mis alabanzas agregadas (${customCount}) a otro teléfono`;
   elements.catalogTools.classList.remove("hidden");
+}
+
+// ---------- Mudanza de GitHub Pages a Cloudflare ----------
+
+function showMoveBannerIfOldAddress() {
+  if (!OLD_HOSTS.includes(window.location.hostname)) return;
+  elements.moveBanner.classList.remove("hidden");
+  elements.moveButton.onclick = moveToNewAddress;
+}
+
+async function moveToNewAddress() {
+  const data = {
+    v: 1,
+    lists: savedLists,
+    active: activeListId,
+    tr: transposeMap,
+    custom: customHymns,
+    hidden: [...hiddenHymns],
+    view: viewMode,
+    font: fontScale
+  };
+  let url = PUBLIC_URL;
+  try {
+    const packed = await compressText(JSON.stringify(data));
+    url += packed ? `#migrar=z${packed}` : `#migrar=j${encodeSharePayload(data)}`;
+  } catch {
+    // Sin datos que pasar: se abre la dirección nueva igual.
+  }
+  window.location.href = url;
+}
+
+async function receiveMigration() {
+  const encoded = window.location.hash.replace(/^#migrar=/, "");
+  history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  let data;
+  try {
+    data = encoded.charAt(0) === "z"
+      ? JSON.parse(await decompressText(encoded.slice(1)))
+      : decodeSharePayload(encoded.slice(1));
+  } catch (error) {
+    console.error(error);
+    showToast("No se pudieron pasar tus datos de la dirección anterior.");
+    return;
+  }
+  if (!data || data.v !== 1) return;
+
+  let added = 0;
+  (Array.isArray(data.lists) ? data.lists : []).forEach((list) => {
+    if (!list || !Array.isArray(list.hymns) || savedLists.length >= MAX_LISTS) return;
+    const duplicate = savedLists.some(
+      (l) => displayListName(l) === displayListName(list) && l.hymns.join() === list.hymns.join()
+    );
+    if (duplicate) return;
+    savedLists.push({
+      ...createListObject(String(list.name || "Listado").slice(0, 80), list.hymns.map(Number)),
+      updatedAt: Number(list.updatedAt) || Date.now()
+    });
+    added += 1;
+  });
+  if (!activeListId && savedLists.length) activeListId = savedLists[0].id;
+  persistLists();
+
+  if (data.tr && typeof data.tr === "object") {
+    transposeMap = { ...data.tr, ...transposeMap };
+    saveTransposeMap();
+  }
+  (Array.isArray(data.custom) ? data.custom : []).forEach((h) => {
+    if (!h || !h.cho || customHymns.some((c) => c.title === h.title && c.cho === h.cho)) return;
+    customHymns.push({ ...h, number: nextCustomNumber() });
+  });
+  persistCustomHymns();
+  (Array.isArray(data.hidden) ? data.hidden : []).forEach((n) => hiddenHymns.add(Number(n)));
+  persistHiddenHymns();
+  if (data.view === "pdf" || data.view === "texto") {
+    viewMode = data.view;
+    writeSetting(STORAGE_KEYS.viewMode, viewMode);
+  }
+  if (Number(data.font)) {
+    fontScale = Number(data.font);
+    writeSetting(STORAGE_KEYS.fontScale, String(fontScale));
+  }
+
+  mergeCustomHymnsIntoCatalog();
+  renderListManager();
+  showToast(added
+    ? `Listo: se ${added === 1 ? "pasó 1 listado" : `pasaron ${added} listados`}. Instala la app desde aquí.`
+    : "Listo: ya estás en la nueva dirección. Instala la app desde aquí.");
 }
 
 // ---------- Pasar alabanzas agregadas a otro teléfono ----------

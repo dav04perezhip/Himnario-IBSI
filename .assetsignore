@@ -1,0 +1,16 @@
+# Archivos del repositorio que NO se publican en la página
+.git
+.gitignore
+.nojekyll
+.assetsignore
+.wrangler
+node_modules
+wrangler.jsonc
+*.md
+*.docx
+~$*
+*.bat
+_document_work
+alabanzas
+api
+tools

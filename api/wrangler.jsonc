@@ -15,7 +15,7 @@
   "vars": {
     // Las alabanzas nuevas siguen la numeración del himnario (las oficiales llegan a 220).
     "FIRST_NUMBER": "221",
-    "ALLOWED_ORIGINS": "https://dav04perezhip.github.io,http://localhost:8000,http://127.0.0.1:8000"
+    "ALLOWED_ORIGINS": "https://himnario-ibsi.hiptank-news.workers.dev,https://dav04perezhip.github.io,http://localhost:8000,http://127.0.0.1:8000"
   }
   // La clave de administrador NO va aquí. Se guarda como secreto:
   //   npx wrangler secret put ADMIN_PIN

@@ -1,0 +1,12 @@
+{
+  // Página del Himnario IBSI en Cloudflare (solo archivos estáticos).
+  // Se publica con:  npx wrangler deploy   (o automáticamente al subir a GitHub, si está conectado)
+  // La API de alabanzas publicadas es otro servicio, en la carpeta api/.
+  "name": "himnario-ibsi",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "assets": {
+    "directory": ".",
+    "not_found_handling": "404-page"
+  }
+}
