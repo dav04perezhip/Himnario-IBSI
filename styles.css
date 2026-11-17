@@ -1527,3 +1527,25 @@ main {
     column-rule-color: #34443f;
   }
 }
+
+/* ---------- Zoom: pellizcar en móviles, botones en PC ---------- */
+
+.page-viewport {
+  touch-action: pan-x pan-y;
+}
+
+.transposed-sheet.pdf-sheet {
+  width: calc(min(100%, 920px) * max(1, var(--sheet-scale, 1)));
+  max-width: none;
+  flex: 0 0 auto;
+}
+
+.pdf-sheet .hymn-layout-svg {
+  width: 100%;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .transpose-toolbar .font-button {
+    display: none;
+  }
+}

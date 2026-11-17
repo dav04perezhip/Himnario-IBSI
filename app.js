@@ -1,5 +1,5 @@
 const MAX_LISTS = 5;
-const APP_VERSION = "3.5";
+const APP_VERSION = "3.6";
 const CUSTOM_HYMN_START = 1001;
 // Las 1–214 son las originales: no se pueden eliminar. De la 215 en adelante viven en
 // Cloudflare y solo un administrador las elimina (por completo, y las siguientes se recorren).
@@ -10,8 +10,8 @@ const OLD_HOSTS = ["dav04perezhip.github.io"];
 const SHARED_API = "https://himnario-ibsi-api.hiptank-news.workers.dev";
 const SHARED_FIRST_NUMBER = 215;
 const ORIGINAL_LAST_NUMBER = 214;
-const FONT_SCALE_MIN = 0.7;
-const FONT_SCALE_MAX = 2;
+const FONT_SCALE_MIN = 0.6;
+const FONT_SCALE_MAX = 2.5;
 
 const STORAGE_KEYS = {
   legacySetlist: "ibsi-setlist-v1",
@@ -25,7 +25,8 @@ const STORAGE_KEYS = {
   sharedSongs: "ibsi-shared-songs-cache-v1",
   adminPin: "ibsi-admin-pin-v1",
   viewMode: "ibsi-view-mode-v1",
-  fontScale: "ibsi-font-scale-v1"
+  fontScale: "ibsi-font-scale-v1",
+  pinchHint: "ibsi-pinch-hint-v1"
 };
 
 const SHARP_NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -328,12 +329,44 @@ function wireEvents() {
   elements.nextHymnButton.addEventListener("click", () => navigateSetlist(1));
 
   elements.pageViewport.addEventListener("touchstart", (event) => {
+    if (event.touches.length >= 2) {
+      startPinch(event);
+      swipeStart = null;
+      return;
+    }
     const touch = event.changedTouches[0];
-    swipeStart = { x: touch.clientX, y: touch.clientY };
+    swipeStart = pinchState ? null : { x: touch.clientX, y: touch.clientY };
   }, { passive: true });
+
+  // Pellizcar con dos dedos para acercar o alejar (teléfono y tablet).
+  elements.pageViewport.addEventListener("touchmove", (event) => {
+    if (!pinchState || event.touches.length < 2) return;
+    event.preventDefault();
+    movePinch(event);
+  }, { passive: false });
+
+  elements.pageViewport.addEventListener("touchend", (event) => {
+    if (pinchState) {
+      if (event.touches.length < 2) endPinch();
+      swipeStart = null;
+      return;
+    }
+  }, { passive: true });
+  elements.pageViewport.addEventListener("touchcancel", () => {
+    if (pinchState) endPinch();
+  }, { passive: true });
+  // Safari (iPhone) tiene su propio zoom de página: se desactiva dentro del visor.
+  ["gesturestart", "gesturechange"].forEach((type) => {
+    elements.pageViewport.addEventListener(type, (event) => event.preventDefault(), { passive: false });
+  });
 
   elements.pageViewport.addEventListener("touchend", (event) => {
     if (!swipeStart || !isViewerListContext()) return;
+    // Si la página está ampliada y se puede mover a los lados, deslizar no cambia de alabanza.
+    if (elements.pageViewport.scrollWidth > elements.pageViewport.clientWidth + 4) {
+      swipeStart = null;
+      return;
+    }
 
     const touch = event.changedTouches[0];
     const deltaX = touch.clientX - swipeStart.x;
@@ -698,6 +731,7 @@ function openViewer(number, context = { source: "catalog", listId: null }) {
   updateViewerAddButton();
   updateSetlistNavigation();
   elements.pageViewport.scrollTo({ top: 0, left: 0 });
+  showPinchHintOnce();
 }
 
 function closeViewer() {
@@ -844,8 +878,8 @@ function renderTransposedSheet() {
   elements.viewModeButton.title = usePdf
     ? "Volver a la vista de texto con acordes arriba"
     : "Ver la página original del PDF";
-  elements.fontSmaller.disabled = usePdf || fontScale <= FONT_SCALE_MIN + 0.001;
-  elements.fontLarger.disabled = usePdf || fontScale >= FONT_SCALE_MAX - 0.001;
+  updateFontButtons();
+  applySheetScale(fontScale);
   elements.transposedSheet.classList.toggle("chord-sheet", !usePdf);
   elements.transposedSheet.classList.toggle("pdf-sheet", usePdf);
 
@@ -876,7 +910,6 @@ function renderTextSheet() {
     transposeChord: (chord) => transposeChordToken(chord, shift, currentHymn.preferFlats)
   });
 
-  elements.transposedSheet.style.setProperty("--sheet-scale", String(fontScale));
   elements.transposedSheet.setAttribute(
     "aria-label",
     `Letra y acordes de ${currentHymn.title} en tono ${transposeKey(
@@ -898,6 +931,78 @@ function changeFontScale(delta) {
   fontScale = Math.round(Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, fontScale + delta)) * 10) / 10;
   writeSetting(STORAGE_KEYS.fontScale, String(fontScale));
   renderTransposedSheet();
+}
+
+// ---------- Zoom con dos dedos ----------
+
+let pinchState = null;
+
+function touchDistance(touches) {
+  const [a, b] = [touches[0], touches[1]];
+  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
+}
+
+function startPinch(event) {
+  if (!currentHymn || event.touches.length < 2) return;
+  const viewport = elements.pageViewport;
+  const rect = viewport.getBoundingClientRect();
+  const centerX = (event.touches[0].clientX + event.touches[1].clientX) / 2 - rect.left;
+  const centerY = (event.touches[0].clientY + event.touches[1].clientY) / 2 - rect.top;
+  pinchState = {
+    startDistance: touchDistance(event.touches),
+    startScale: fontScale,
+    scale: fontScale,
+    centerX,
+    centerY,
+    // Punto del contenido que está bajo los dedos, en proporción, para mantenerlo ahí.
+    ratioX: (viewport.scrollLeft + centerX) / Math.max(1, viewport.scrollWidth),
+    ratioY: (viewport.scrollTop + centerY) / Math.max(1, viewport.scrollHeight),
+    frame: null
+  };
+}
+
+function movePinch(event) {
+  const state = pinchState;
+  const ratio = touchDistance(event.touches) / state.startDistance;
+  state.scale = Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, state.startScale * ratio));
+  if (state.frame) return;
+  state.frame = requestAnimationFrame(() => {
+    state.frame = null;
+    if (pinchState !== state) return;
+    applySheetScale(state.scale);
+    const viewport = elements.pageViewport;
+    viewport.scrollTop = state.ratioY * viewport.scrollHeight - state.centerY;
+    viewport.scrollLeft = state.ratioX * viewport.scrollWidth - state.centerX;
+  });
+}
+
+function endPinch() {
+  const state = pinchState;
+  pinchState = null;
+  if (!state) return;
+  if (state.frame) cancelAnimationFrame(state.frame);
+  fontScale = Math.round(state.scale * 20) / 20;
+  writeSetting(STORAGE_KEYS.fontScale, String(fontScale));
+  applySheetScale(fontScale);
+  updateFontButtons();
+  const body = elements.transposedSheet.querySelector(".chord-sheet-body");
+  if (body) ChordPro.fitChords(body);
+}
+
+function applySheetScale(scale) {
+  elements.transposedSheet.style.setProperty("--sheet-scale", String(scale));
+}
+
+function updateFontButtons() {
+  elements.fontSmaller.disabled = fontScale <= FONT_SCALE_MIN + 0.001;
+  elements.fontLarger.disabled = fontScale >= FONT_SCALE_MAX - 0.001;
+}
+
+function showPinchHintOnce() {
+  const isTouch = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+  if (!isTouch || readSetting(STORAGE_KEYS.pinchHint, "")) return;
+  writeSetting(STORAGE_KEYS.pinchHint, "1");
+  showToast("Pellizca con dos dedos para acercar o alejar.");
 }
 
 function loadHymnLayouts() {
