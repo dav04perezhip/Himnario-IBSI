@@ -1,6 +1,9 @@
 const MAX_LISTS = 5;
 const APP_VERSION = "3.3";
 const CUSTOM_HYMN_START = 1001;
+// Botón de eliminar en el catálogo (en prueba). Para quitarlo, cambiar a false.
+const ENABLE_DELETE_HYMNS = true;
+const PUBLIC_URL = "https://dav04perezhip.github.io/Himnario-IBSI/";
 const FONT_SCALE_MIN = 0.7;
 const FONT_SCALE_MAX = 2;
 
@@ -12,6 +15,7 @@ const STORAGE_KEYS = {
   transposeMap: "ibsi-transpose-v1",
   emptyDefaultCleaned: "ibsi-empty-default-cleaned-v2-2",
   customHymns: "ibsi-custom-hymns-v1",
+  hiddenHymns: "ibsi-hidden-hymns-v1",
   viewMode: "ibsi-view-mode-v1",
   fontScale: "ibsi-font-scale-v1"
 };
@@ -29,6 +33,7 @@ let hymnLayouts = null;
 let hymnLayoutsPromise = null;
 let hymnTexts = {};
 let customHymns = loadCustomHymns();
+let hiddenHymns = loadHiddenHymns();
 let viewMode = readSetting(STORAGE_KEYS.viewMode, "texto");
 let fontScale = Number(readSetting(STORAGE_KEYS.fontScale, "1")) || 1;
 let importerState = { editingNumber: null, previewShift: 0 };
@@ -115,7 +120,10 @@ const elements = {
   importTransposeUp: document.querySelector("#importTransposeUp"),
   copyChordProButton: document.querySelector("#copyChordProButton"),
   saveImportButton: document.querySelector("#saveImportButton"),
-  deleteCustomHymnButton: document.querySelector("#deleteCustomHymnButton")
+  deleteCustomHymnButton: document.querySelector("#deleteCustomHymnButton"),
+  catalogTools: document.querySelector("#catalogTools"),
+  sendCustomHymnsButton: document.querySelector("#sendCustomHymnsButton"),
+  restoreHiddenButton: document.querySelector("#restoreHiddenButton")
 };
 
 init();
@@ -142,8 +150,11 @@ async function init() {
     renderCatalog(hymns);
     renderListManager();
 
-    const sharedPayload = parseSharedListFromHash();
-    if (sharedPayload) {
+    const receivedSongs = /^#songs=/.test(window.location.hash);
+    const sharedPayload = receivedSongs ? null : parseSharedListFromHash();
+    if (receivedSongs) {
+      await receiveSharedSongs();
+    } else if (sharedPayload) {
       sharedList = sharedPayload;
       renderSharedListModal();
       openSharedListModal();
@@ -279,6 +290,8 @@ function wireEvents() {
   elements.copyChordProButton.addEventListener("click", copyImportChordPro);
   elements.saveImportButton.addEventListener("click", saveImportedHymn);
   elements.deleteCustomHymnButton.addEventListener("click", deleteCustomHymn);
+  elements.sendCustomHymnsButton.addEventListener("click", sendCustomHymns);
+  elements.restoreHiddenButton.addEventListener("click", restoreHiddenHymns);
 
   elements.previousHymnButton.addEventListener("click", () => navigateSetlist(-1));
   elements.nextHymnButton.addEventListener("click", () => navigateSetlist(1));
@@ -374,12 +387,15 @@ function cleanSavedListsAgainstCatalog() {
   if (changed) persistLists();
 }
 
-function renderCatalog(items) {
+function renderCatalog(allItems) {
+  const items = allItems.filter((hymn) => !isHidden(hymn.number));
+  const visibleTotal = hymns.filter((hymn) => !isHidden(hymn.number)).length;
   elements.hymnGrid.innerHTML = "";
   elements.emptySearch.classList.toggle("hidden", items.length > 0);
-  elements.catalogCount.textContent = items.length === hymns.length
-    ? `${hymns.length} alabanzas disponibles. Busca por número, nombre o artista.`
+  elements.catalogCount.textContent = items.length === visibleTotal
+    ? `${visibleTotal} alabanzas disponibles. Busca por número, nombre o artista.`
     : `${items.length} resultado${items.length === 1 ? "" : "s"} encontrado${items.length === 1 ? "" : "s"}.`;
+  renderCatalogTools();
 
   const fragment = document.createDocumentFragment();
 
@@ -395,10 +411,19 @@ function renderCatalog(items) {
           ? `<p>${escapeHtml([hymn.artist, hymn.custom ? "Agregada en este dispositivo" : ""].filter(Boolean).join(" · "))}</p>`
           : ""}
       </div>
+      ${ENABLE_DELETE_HYMNS
+        ? `<button class="card-delete" type="button" aria-label="Eliminar ${escapeHtml(hymn.title)}" title="Eliminar">
+             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>
+           </button>`
+        : ""}
       <button class="card-open" type="button" aria-label="Abrir ${escapeHtml(hymn.title)}">›</button>
     `;
 
     card.querySelector(".card-open").addEventListener("click", () => openViewer(hymn.number));
+    card.querySelector(".card-delete")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteHymnFromCatalog(hymn);
+    });
     card.addEventListener("dblclick", () => {
       if (getActiveList()) addToActiveList(hymn.number);
     });
@@ -1251,6 +1276,173 @@ function deleteCustomHymn() {
   closeImporter();
   if (currentHymn?.number === number) closeViewer();
   showToast("Alabanza eliminada.");
+}
+
+// ---------- Eliminar / ocultar alabanzas (en prueba) ----------
+
+function loadHiddenHymns() {
+  try {
+    const data = JSON.parse(localStorage.getItem(STORAGE_KEYS.hiddenHymns) || "[]");
+    return new Set(Array.isArray(data) ? data.map(Number).filter(Number.isInteger) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistHiddenHymns() {
+  writeSetting(STORAGE_KEYS.hiddenHymns, JSON.stringify([...hiddenHymns]));
+}
+
+function isHidden(number) {
+  return ENABLE_DELETE_HYMNS && hiddenHymns.has(number);
+}
+
+function deleteHymnFromCatalog(hymn) {
+  if (hymn.custom) {
+    if (!confirm(`¿Eliminar “${hymn.title}” de este dispositivo?\n\nEsta alabanza la agregaste tú y no se puede recuperar.`)) return;
+    customHymns = customHymns.filter((h) => h.number !== hymn.number);
+    persistCustomHymns();
+    mergeCustomHymnsIntoCatalog();
+    cleanSavedListsAgainstCatalog();
+    renderListManager();
+    showToast("Alabanza eliminada.");
+  } else {
+    if (!confirm(`¿Eliminar “${hymn.number}. ${hymn.title}” de la lista?\n\nSolo se quita en este dispositivo y puedes recuperarla con “Mostrar eliminadas”.`)) return;
+    hiddenHymns.add(hymn.number);
+    persistHiddenHymns();
+    showToast("Alabanza eliminada de este dispositivo.");
+  }
+  refreshCatalog();
+}
+
+function restoreHiddenHymns() {
+  const count = hiddenHymns.size;
+  if (!count) return;
+  hiddenHymns.clear();
+  persistHiddenHymns();
+  refreshCatalog();
+  showToast(`${count} alabanza${count === 1 ? "" : "s"} recuperada${count === 1 ? "" : "s"}.`);
+}
+
+function refreshCatalog() {
+  // Volver a aplicar la búsqueda que esté escrita.
+  elements.searchInput.dispatchEvent(new Event("input"));
+}
+
+function renderCatalogTools() {
+  const hiddenCount = ENABLE_DELETE_HYMNS ? hiddenHymns.size : 0;
+  const customCount = customHymns.length;
+  elements.restoreHiddenButton.classList.toggle("hidden", hiddenCount === 0);
+  elements.restoreHiddenButton.textContent =
+    `Mostrar eliminadas (${hiddenCount})`;
+  elements.sendCustomHymnsButton.classList.toggle("hidden", customCount === 0);
+  elements.sendCustomHymnsButton.textContent =
+    `Enviar mis alabanzas agregadas (${customCount}) a otro teléfono`;
+  elements.catalogTools.classList.toggle("hidden", hiddenCount === 0 && customCount === 0);
+}
+
+// ---------- Pasar alabanzas agregadas a otro teléfono ----------
+
+async function compressText(text) {
+  if (typeof CompressionStream === "undefined") return null;
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
+  const buffer = new Uint8Array(await new Response(stream).arrayBuffer());
+  let binary = "";
+  buffer.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function decompressText(encoded) {
+  const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return new Response(stream).text();
+}
+
+async function sendCustomHymns() {
+  if (!customHymns.length) return;
+  const songs = customHymns.map((h) => ({
+    t: h.title, a: h.artist || "", k: h.originalKey, f: h.preferFlats ? 1 : 0, c: h.cho
+  }));
+  const json = JSON.stringify({ v: 1, s: songs });
+  const compressed = await compressText(json).catch(() => null);
+  const payload = compressed ? `z${compressed}` : `j${encodeSharePayload({ v: 1, s: songs })}`;
+
+  const base = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)
+    ? PUBLIC_URL
+    : `${window.location.origin}${window.location.pathname}`;
+  const url = `${base}#songs=${payload}`;
+  const text = `🎶 Himnario IBSI: ${songs.length} alabanza${songs.length === 1 ? "" : "s"} para agregar.\nÁbrelo en el teléfono:`;
+
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: "Himnario IBSI — alabanzas", text, url });
+      return;
+    }
+    await copyShareContent(`${text}\n${url}`);
+    showToast("Enlace copiado. Envíatelo por WhatsApp y ábrelo en el teléfono.");
+  } catch (error) {
+    if (error?.name === "AbortError") return;
+    try {
+      await copyShareContent(`${text}\n${url}`);
+      showToast("Enlace copiado. Envíatelo por WhatsApp y ábrelo en el teléfono.");
+    } catch {
+      showToast("No fue posible crear el enlace.");
+    }
+  }
+}
+
+async function receiveSharedSongs() {
+  const encoded = window.location.hash.replace(/^#songs=/, "");
+  history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+
+  let songs;
+  try {
+    const kind = encoded.charAt(0);
+    const data = kind === "z"
+      ? JSON.parse(await decompressText(encoded.slice(1)))
+      : decodeSharePayload(encoded.slice(1));
+    songs = (data && data.v === 1 && Array.isArray(data.s) ? data.s : [])
+      .filter((s) => s && typeof s.t === "string" && typeof s.c === "string" && s.c.length < 50000);
+  } catch (error) {
+    console.error(error);
+    showToast("El enlace de alabanzas no es válido o está incompleto.");
+    return;
+  }
+  if (!songs.length) {
+    showToast("El enlace no trae alabanzas.");
+    return;
+  }
+
+  const newSongs = songs.filter(
+    (s) => !customHymns.some((h) => h.title === s.t && h.cho === s.c)
+  );
+  if (!newSongs.length) {
+    showToast("Ya tienes estas alabanzas en este dispositivo.");
+    return;
+  }
+
+  const names = newSongs.slice(0, 8).map((s) => `• ${s.t}`).join("\n");
+  const more = newSongs.length > 8 ? `\n… y ${newSongs.length - 8} más` : "";
+  if (!confirm(`¿Agregar ${newSongs.length} alabanza${newSongs.length === 1 ? "" : "s"} a este dispositivo?\n\n${names}${more}`)) return;
+
+  let next = nextCustomNumber();
+  newSongs.forEach((s) => {
+    customHymns.push({
+      number: next,
+      title: s.t.slice(0, 100),
+      artist: String(s.a || "").slice(0, 100),
+      originalKey: String(s.k || ChordPro.firstChord(s.c) || "C").slice(0, 4),
+      preferFlats: Boolean(s.f),
+      cho: s.c
+    });
+    next += 1;
+  });
+  if (!persistCustomHymns()) return;
+  mergeCustomHymnsIntoCatalog();
+  refreshCatalog();
+  showToast(`${newSongs.length} alabanza${newSongs.length === 1 ? "" : "s"} agregada${newSongs.length === 1 ? "" : "s"}.`);
 }
 
 async function copyImportChordPro() {
