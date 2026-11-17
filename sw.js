@@ -1,13 +1,14 @@
-const CACHE_NAME = "himnario-ibsi-v3.2.0";
+const CACHE_NAME = "himnario-ibsi-v3.3.0";
 
 const PRECACHE_URLS = [
   "./",
   "index.html",
-  "styles.css?v=3.2",
-  "app.js?v=3.2",
-  "hymns.json?v=3.2",
-  "hymn_layouts.json?v=3.2",
-  "manifest.webmanifest?v=3.2",
+  "styles.css?v=3.3",
+  "app.js?v=3.3",
+  "hymns.json?v=3.3",
+  "alabanzas.json?v=3.3",
+  "chordpro.js?v=3.3",
+  "manifest.webmanifest?v=3.3",
   "assets/icons/icon-192.png",
   "assets/icons/icon-512.png"
 ];

@@ -1,5 +1,8 @@
 const MAX_LISTS = 5;
-const APP_VERSION = "3.2";
+const APP_VERSION = "3.3";
+const CUSTOM_HYMN_START = 1001;
+const FONT_SCALE_MIN = 0.7;
+const FONT_SCALE_MAX = 2;
 
 const STORAGE_KEYS = {
   legacySetlist: "ibsi-setlist-v1",
@@ -7,7 +10,10 @@ const STORAGE_KEYS = {
   savedLists: "ibsi-saved-lists-v2",
   activeListId: "ibsi-active-list-id-v2",
   transposeMap: "ibsi-transpose-v1",
-  emptyDefaultCleaned: "ibsi-empty-default-cleaned-v2-2"
+  emptyDefaultCleaned: "ibsi-empty-default-cleaned-v2-2",
+  customHymns: "ibsi-custom-hymns-v1",
+  viewMode: "ibsi-view-mode-v1",
+  fontScale: "ibsi-font-scale-v1"
 };
 
 const SHARP_NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -19,7 +25,13 @@ const NOTE_INDEX = {
 };
 
 let hymns = [];
-let hymnLayouts = {};
+let hymnLayouts = null;
+let hymnLayoutsPromise = null;
+let hymnTexts = {};
+let customHymns = loadCustomHymns();
+let viewMode = readSetting(STORAGE_KEYS.viewMode, "texto");
+let fontScale = Number(readSetting(STORAGE_KEYS.fontScale, "1")) || 1;
+let importerState = { editingNumber: null, previewShift: 0 };
 let savedLists = loadSavedLists();
 let activeListId = loadActiveListId(savedLists);
 let transposeMap = loadTransposeMap();
@@ -83,7 +95,27 @@ const elements = {
   connectionState: document.querySelector("#connectionState"),
   catalogCount: document.querySelector("#catalogCount"),
   updateBanner: document.querySelector("#updateBanner"),
-  updateButton: document.querySelector("#updateButton")
+  updateButton: document.querySelector("#updateButton"),
+  fontSmaller: document.querySelector("#fontSmaller"),
+  fontLarger: document.querySelector("#fontLarger"),
+  viewModeButton: document.querySelector("#viewModeButton"),
+  editHymnButton: document.querySelector("#editHymnButton"),
+  openImporterButton: document.querySelector("#openImporterButton"),
+  importerModal: document.querySelector("#importerModal"),
+  importerTitle: document.querySelector("#importerTitle"),
+  closeImporterButton: document.querySelector("#closeImporterButton"),
+  importTitle: document.querySelector("#importTitle"),
+  importArtist: document.querySelector("#importArtist"),
+  importKey: document.querySelector("#importKey"),
+  importText: document.querySelector("#importText"),
+  importError: document.querySelector("#importError"),
+  importPreview: document.querySelector("#importPreview"),
+  importPreviewKey: document.querySelector("#importPreviewKey"),
+  importTransposeDown: document.querySelector("#importTransposeDown"),
+  importTransposeUp: document.querySelector("#importTransposeUp"),
+  copyChordProButton: document.querySelector("#copyChordProButton"),
+  saveImportButton: document.querySelector("#saveImportButton"),
+  deleteCustomHymnButton: document.querySelector("#deleteCustomHymnButton")
 };
 
 init();
@@ -94,17 +126,18 @@ async function init() {
   updateConnectionState();
 
   try {
-    const [hymnResponse, layoutResponse] = await Promise.all([
+    const [hymnResponse, textResponse] = await Promise.all([
       fetch(`hymns.json?v=${APP_VERSION}`),
-      fetch(`hymn_layouts.json?v=${APP_VERSION}`)
+      fetch(`alabanzas.json?v=${APP_VERSION}`)
     ]);
 
-    if (!hymnResponse.ok || !layoutResponse.ok) {
+    if (!hymnResponse.ok || !textResponse.ok) {
       throw new Error("No se pudo leer el catálogo.");
     }
 
     hymns = await hymnResponse.json();
-    hymnLayouts = await layoutResponse.json();
+    hymnTexts = await textResponse.json();
+    mergeCustomHymnsIntoCatalog();
     cleanSavedListsAgainstCatalog();
     renderCatalog(hymns);
     renderListManager();
@@ -210,6 +243,43 @@ function wireEvents() {
   elements.transposeUp.addEventListener("click", () => changeTranspose(1));
   elements.transposeReset.addEventListener("click", () => setTranspose(0));
 
+  elements.fontSmaller.addEventListener("click", () => changeFontScale(-0.1));
+  elements.fontLarger.addEventListener("click", () => changeFontScale(0.1));
+  elements.viewModeButton.addEventListener("click", () => {
+    viewMode = viewMode === "pdf" ? "texto" : "pdf";
+    writeSetting(STORAGE_KEYS.viewMode, viewMode);
+    renderTransposedSheet();
+  });
+  elements.editHymnButton.addEventListener("click", () => {
+    if (currentHymn?.custom) openImporter(currentHymn.number);
+  });
+
+  elements.openImporterButton.addEventListener("click", () => openImporter());
+  elements.closeImporterButton.addEventListener("click", closeImporter);
+  [elements.importText, elements.importKey].forEach((input) => {
+    input.addEventListener("input", () => {
+      clearImportError();
+      renderImportPreview();
+    });
+  });
+  [elements.importTitle, elements.importArtist].forEach((input) => {
+    input.addEventListener("input", clearImportError);
+  });
+  elements.importText.addEventListener("paste", () => {
+    setTimeout(autofillImportFields, 0);
+  });
+  elements.importTransposeDown.addEventListener("click", () => {
+    importerState.previewShift -= 1;
+    renderImportPreview();
+  });
+  elements.importTransposeUp.addEventListener("click", () => {
+    importerState.previewShift += 1;
+    renderImportPreview();
+  });
+  elements.copyChordProButton.addEventListener("click", copyImportChordPro);
+  elements.saveImportButton.addEventListener("click", saveImportedHymn);
+  elements.deleteCustomHymnButton.addEventListener("click", deleteCustomHymn);
+
   elements.previousHymnButton.addEventListener("click", () => navigateSetlist(-1));
   elements.nextHymnButton.addEventListener("click", () => navigateSetlist(1));
 
@@ -239,6 +309,17 @@ function wireEvents() {
   });
   elements.saveSharedListButton.addEventListener("click", importSharedList);
 
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const body = elements.transposedSheet.querySelector(".chord-sheet-body");
+      if (body && !elements.viewer.classList.contains("hidden")) ChordPro.fitChords(body);
+      const preview = elements.importPreview.querySelector(".chord-sheet-body");
+      if (preview && !elements.importerModal.classList.contains("hidden")) ChordPro.fitChords(preview);
+    }, 120);
+  });
+
   window.addEventListener("online", updateConnectionState);
   window.addEventListener("offline", updateConnectionState);
 
@@ -259,6 +340,11 @@ function wireEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
+    if (!elements.importerModal.classList.contains("hidden")) {
+      if (event.key === "Escape") closeImporter();
+      return;
+    }
+
     if (!elements.sharedListModal.classList.contains("hidden") && event.key === "Escape") {
       closeSharedListModal(true);
       return;
@@ -300,11 +386,14 @@ function renderCatalog(items) {
   for (const hymn of items) {
     const card = document.createElement("article");
     card.className = "hymn-card";
+    if (hymn.custom) card.classList.add("custom");
     card.innerHTML = `
-      <span class="hymn-number">${hymn.number}</span>
+      <span class="hymn-number">${hymn.custom ? "P" : hymn.number}</span>
       <div class="hymn-card-copy">
         <h3>${escapeHtml(hymn.title)}</h3>
-        ${hymn.artist ? `<p>${escapeHtml(hymn.artist)}</p>` : ""}
+        ${hymn.artist || hymn.custom
+          ? `<p>${escapeHtml([hymn.artist, hymn.custom ? "Agregada en este dispositivo" : ""].filter(Boolean).join(" · "))}</p>`
+          : ""}
       </div>
       <button class="card-open" type="button" aria-label="Abrir ${escapeHtml(hymn.title)}">›</button>
     `;
@@ -533,9 +622,11 @@ function openViewer(number, context = { source: "catalog", listId: null }) {
   const contextList = getViewerList();
   elements.viewerTitle.textContent = hymn.title;
   const artistLabel = hymn.artist ? hymn.artist : "Himnario IBSI";
+  const numberLabel = hymn.custom ? "Agregada en este dispositivo" : `Alabanza ${hymn.number}`;
   elements.viewerSubtitle.textContent = contextList
-    ? `${displayListName(contextList)} · ${artistLabel} · Alabanza ${hymn.number}`
-    : `${artistLabel} · Alabanza ${hymn.number}`;
+    ? `${displayListName(contextList)} · ${artistLabel} · ${numberLabel}`
+    : `${artistLabel} · ${numberLabel}`;
+  elements.editHymnButton.classList.toggle("hidden", !hymn.custom);
 
   elements.viewer.classList.remove("hidden");
   document.body.style.overflow = "hidden";
@@ -681,6 +772,105 @@ function transposeKey(key, shift, preferFlats) {
 
 function renderTransposedSheet() {
   if (!currentHymn) return;
+
+  const hasPdf = !currentHymn.custom;
+  const usePdf = viewMode === "pdf" && hasPdf;
+  elements.viewModeButton.classList.toggle("hidden", !hasPdf);
+  elements.viewModeButton.textContent = usePdf ? "Texto" : "PDF";
+  elements.viewModeButton.setAttribute("aria-pressed", String(usePdf));
+  elements.viewModeButton.title = usePdf
+    ? "Volver a la vista de texto con acordes arriba"
+    : "Ver la página original del PDF";
+  elements.fontSmaller.disabled = usePdf || fontScale <= FONT_SCALE_MIN + 0.001;
+  elements.fontLarger.disabled = usePdf || fontScale >= FONT_SCALE_MAX - 0.001;
+  elements.transposedSheet.classList.toggle("chord-sheet", !usePdf);
+  elements.transposedSheet.classList.toggle("pdf-sheet", usePdf);
+
+  if (usePdf) {
+    renderPdfSheet();
+  } else {
+    renderTextSheet();
+  }
+}
+
+function renderTextSheet() {
+  const source = getHymnText(currentHymn);
+  if (!source) {
+    elements.transposedSheet.textContent = "No se encontró la letra de esta alabanza.";
+    return;
+  }
+
+  const shift = getTranspose(currentHymn.number);
+  const parsed = ChordPro.parse(source);
+  const header = document.createElement("header");
+  header.className = "cs-header";
+  header.innerHTML = `
+    <h2>${currentHymn.custom ? "" : `<span>${currentHymn.number}.</span> `}${escapeHtml(currentHymn.title)}</h2>
+    ${currentHymn.artist ? `<p>${escapeHtml(currentHymn.artist)}</p>` : ""}
+  `;
+
+  const body = ChordPro.render(parsed, {
+    transposeChord: (chord) => transposeChordToken(chord, shift, currentHymn.preferFlats)
+  });
+
+  elements.transposedSheet.style.setProperty("--sheet-scale", String(fontScale));
+  elements.transposedSheet.setAttribute(
+    "aria-label",
+    `Letra y acordes de ${currentHymn.title} en tono ${transposeKey(
+      currentHymn.originalKey,
+      shift,
+      currentHymn.preferFlats
+    )}`
+  );
+  elements.transposedSheet.replaceChildren(header, body);
+  ChordPro.fitChords(body);
+}
+
+function getHymnText(hymn) {
+  if (hymn.custom) return hymn.cho || "";
+  return hymnTexts[String(hymn.number)] || "";
+}
+
+function changeFontScale(delta) {
+  fontScale = Math.round(Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, fontScale + delta)) * 10) / 10;
+  writeSetting(STORAGE_KEYS.fontScale, String(fontScale));
+  renderTransposedSheet();
+}
+
+function loadHymnLayouts() {
+  if (hymnLayouts) return Promise.resolve(hymnLayouts);
+  if (!hymnLayoutsPromise) {
+    hymnLayoutsPromise = fetch(`hymn_layouts.json?v=${APP_VERSION}`)
+      .then((response) => {
+        if (!response.ok) throw new Error("No se pudo leer el PDF.");
+        return response.json();
+      })
+      .then((data) => {
+        hymnLayouts = data;
+        return data;
+      })
+      .catch((error) => {
+        hymnLayoutsPromise = null;
+        throw error;
+      });
+  }
+  return hymnLayoutsPromise;
+}
+
+function renderPdfSheet() {
+  if (!hymnLayouts) {
+    const requested = currentHymn;
+    elements.transposedSheet.textContent = "Cargando la página original…";
+    loadHymnLayouts()
+      .then(() => {
+        if (currentHymn === requested && viewMode === "pdf") renderTransposedSheet();
+      })
+      .catch(() => {
+        elements.transposedSheet.textContent =
+          "No se pudo cargar la vista original. Revisa tu conexión e inténtalo de nuevo.";
+      });
+    return;
+  }
 
   const layout = hymnLayouts[String(currentHymn.number)];
   if (!layout || !Array.isArray(layout.items)) {
@@ -861,6 +1051,220 @@ function transposeNote(root, accidental, shift, preferFlats) {
   const nextIndex = (index + shift + 120) % 12;
   const useFlats = accidental === "b" || (accidental !== "#" && preferFlats);
   return (useFlats ? FLAT_NOTES : SHARP_NOTES)[nextIndex];
+}
+
+// ---------- Alabanzas agregadas en este dispositivo e importador ----------
+
+function readSetting(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : value;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSetting(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Sin almacenamiento disponible: la preferencia dura solo esta sesión.
+  }
+}
+
+function loadCustomHymns() {
+  try {
+    const data = JSON.parse(localStorage.getItem(STORAGE_KEYS.customHymns) || "[]");
+    return Array.isArray(data) ? data.filter((h) => h && h.number && h.cho) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistCustomHymns() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.customHymns, JSON.stringify(customHymns));
+    return true;
+  } catch {
+    showToast("No se pudo guardar en este dispositivo.");
+    return false;
+  }
+}
+
+function mergeCustomHymnsIntoCatalog() {
+  hymns = hymns.filter((hymn) => !hymn.custom);
+  customHymns.forEach((hymn) => hymns.push({ ...hymn, custom: true }));
+}
+
+function nextCustomNumber() {
+  return customHymns.reduce((max, hymn) => Math.max(max, hymn.number + 1), CUSTOM_HYMN_START);
+}
+
+function openImporter(editNumber = null) {
+  importerState = { editingNumber: editNumber, previewShift: 0 };
+  const editing = editNumber ? customHymns.find((h) => h.number === editNumber) : null;
+
+  elements.importerTitle.textContent = editing ? "Editar alabanza" : "Agregar alabanza";
+  elements.importTitle.value = editing?.title || "";
+  elements.importArtist.value = editing?.artist || "";
+  elements.importKey.value = editing?.originalKey || "";
+  elements.importText.value = editing ? stripHeader(editing.cho) : "";
+  elements.deleteCustomHymnButton.classList.toggle("hidden", !editing);
+  clearImportError();
+  renderImportPreview();
+
+  elements.importerModal.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  (editing ? elements.importText : elements.importTitle).focus();
+}
+
+function closeImporter() {
+  elements.importerModal.classList.add("hidden");
+  if (elements.viewer.classList.contains("hidden")) document.body.style.overflow = "";
+}
+
+function stripHeader(cho) {
+  return cho.replace(/^\s*\{(?:title|artist|key|flats)\s*:[^}]*\}\s*\n/gim, "").trim();
+}
+
+function importBodyAsChordPro() {
+  const raw = elements.importText.value;
+  if (!raw.trim()) return "";
+  return ChordPro.looksLikeChordPro(raw) ? stripHeader(raw) : ChordPro.fromChordsOverLyrics(raw);
+}
+
+function importDetectedKey(body) {
+  const typed = elements.importKey.value.trim();
+  if (typed) return typed.charAt(0).toUpperCase() + typed.slice(1);
+  return ChordPro.firstChord(body);
+}
+
+function autofillImportFields() {
+  // Si la primera línea pegada parece "Título - Artista", se usa para rellenar los campos.
+  const lines = elements.importText.value.replace(/\r/g, "").split("\n");
+  const first = (lines[0] || "").trim();
+  if (!first || ChordPro.isChordLine(first) || elements.importTitle.value.trim()) {
+    renderImportPreview();
+    return;
+  }
+  const match = /^(.+?)\s+[-–—]\s+(.+)$/.exec(first);
+  if (match && first.length < 90 && /^\s*$/.test(lines[1] || "")) {
+    elements.importTitle.value = match[1].trim();
+    if (!elements.importArtist.value.trim()) elements.importArtist.value = match[2].trim();
+    elements.importText.value = lines.slice(1).join("\n").replace(/^\s*\n/, "");
+  }
+  renderImportPreview();
+}
+
+function renderImportPreview() {
+  const body = importBodyAsChordPro();
+  const key = importDetectedKey(body);
+  const preferFlats = /b/.test(key.slice(1, 2)) || ["F", "Dm"].includes(key);
+  const shift = importerState.previewShift;
+  elements.importPreviewKey.textContent = key ? transposeKey(key, shift, preferFlats) : "—";
+
+  if (!body) {
+    const hint = document.createElement("p");
+    hint.className = "importer-hint";
+    hint.textContent = "Aquí verás la alabanza con los acordes arriba de cada sílaba.";
+    elements.importPreview.replaceChildren(hint);
+    return;
+  }
+
+  const header = document.createElement("header");
+  header.className = "cs-header";
+  const title = elements.importTitle.value.trim();
+  const artist = elements.importArtist.value.trim();
+  header.innerHTML = `${title ? `<h2>${escapeHtml(title)}</h2>` : ""}${artist ? `<p>${escapeHtml(artist)}</p>` : ""}`;
+
+  const rendered = ChordPro.render(ChordPro.parse(body), {
+    transposeChord: (chord) => transposeChordToken(chord, shift, preferFlats)
+  });
+  elements.importPreview.replaceChildren(header, rendered);
+  ChordPro.fitChords(rendered);
+}
+
+function buildImportedHymn() {
+  const title = elements.importTitle.value.trim();
+  const body = importBodyAsChordPro();
+  if (!title) return { error: "Escribe el título de la alabanza.", field: elements.importTitle };
+  if (!body) return { error: "Pega la letra con los acordes.", field: elements.importText };
+  if (!/\[[^\]]+\]/.test(body)) {
+    return {
+      error: "No se encontraron acordes. Revisa que los acordes estén en la línea de arriba de la letra.",
+      field: elements.importText
+    };
+  }
+
+  const artist = elements.importArtist.value.trim();
+  const originalKey = importDetectedKey(body) || "C";
+  const preferFlats = /^[A-G]b/.test(originalKey) || /\[[A-G]b/.test(body);
+  const cho = ChordPro.stringify({ title, artist, key: originalKey, flats: preferFlats }, body);
+  return { hymn: { title, artist, originalKey, preferFlats, cho } };
+}
+
+function showImportError(message, field) {
+  elements.importError.textContent = message;
+  elements.importError.classList.remove("hidden");
+  field?.focus();
+}
+
+function clearImportError() {
+  elements.importError.classList.add("hidden");
+  elements.importError.textContent = "";
+}
+
+function saveImportedHymn() {
+  const result = buildImportedHymn();
+  if (result.error) {
+    showImportError(result.error, result.field);
+    return;
+  }
+
+  const editing = importerState.editingNumber;
+  const number = editing || nextCustomNumber();
+  const hymn = { number, ...result.hymn };
+  const index = customHymns.findIndex((h) => h.number === number);
+  if (index >= 0) customHymns[index] = hymn;
+  else customHymns.push(hymn);
+  if (!persistCustomHymns()) return;
+
+  mergeCustomHymnsIntoCatalog();
+  renderCatalog(hymns);
+  closeImporter();
+  showToast(editing ? "Alabanza actualizada." : "Alabanza guardada en este dispositivo.");
+  openViewer(number);
+}
+
+function deleteCustomHymn() {
+  const number = importerState.editingNumber;
+  const hymn = customHymns.find((h) => h.number === number);
+  if (!hymn) return;
+  if (!confirm(`¿Eliminar “${hymn.title}” de este dispositivo?`)) return;
+
+  customHymns = customHymns.filter((h) => h.number !== number);
+  persistCustomHymns();
+  mergeCustomHymnsIntoCatalog();
+  cleanSavedListsAgainstCatalog();
+  renderCatalog(hymns);
+  renderListManager();
+  closeImporter();
+  if (currentHymn?.number === number) closeViewer();
+  showToast("Alabanza eliminada.");
+}
+
+async function copyImportChordPro() {
+  const result = buildImportedHymn();
+  if (result.error) {
+    showImportError(result.error, result.field);
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(result.hymn.cho);
+    showToast("Formato copiado. Envíalo para agregarlo al himnario oficial.");
+  } catch {
+    showToast("No se pudo copiar automáticamente.");
+  }
 }
 
 function updateViewerAddButton() {

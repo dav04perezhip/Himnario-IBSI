@@ -18,16 +18,16 @@
   <meta name="twitter:title" content="Himnario IBSI">
   <meta name="twitter:description" content="Abre y guarda un listado compartido de alabanzas.">
 
-  <link rel="manifest" href="manifest.webmanifest?v=3.2">
+  <link rel="manifest" href="manifest.webmanifest?v=3.3">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
   <link rel="icon" href="assets/icons/icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=3.2">
+  <link rel="stylesheet" href="styles.css?v=3.3">
   <title>Himnario IBSI</title>
 </head>
 <body>
   <header class="app-header">
     <div>
-      <p class="eyebrow">Versión 3.2</p>
+      <p class="eyebrow">Versión 3.3</p>
       <h1>Himnario IBSI</h1>
     </div>
     <button id="installButton" class="secondary hidden" type="button">Instalar</button>
@@ -52,7 +52,10 @@
           <h2 id="catalogTitle">Buscar alabanzas</h2>
           <p id="catalogCount">220 alabanzas disponibles. Busca por número, nombre o artista.</p>
         </div>
-        <span id="connectionState" class="status-pill">Comprobando conexión…</span>
+        <div class="section-actions">
+          <span id="connectionState" class="status-pill">Comprobando conexión…</span>
+          <button id="openImporterButton" class="primary compact" type="button">+ Agregar alabanza</button>
+        </div>
       </div>
 
       <label class="search-box">
@@ -128,6 +131,11 @@
       </div>
       <button id="transposeUp" class="tone-button" type="button" aria-label="Subir un semitono">+</button>
       <button id="transposeReset" class="reset-transpose" type="button" aria-label="Volver al tono original" title="Volver al tono original">↺</button>
+      <span class="toolbar-divider" aria-hidden="true"></span>
+      <button id="fontSmaller" class="font-button" type="button" aria-label="Letra más pequeña" title="Letra más pequeña">A−</button>
+      <button id="fontLarger" class="font-button" type="button" aria-label="Letra más grande" title="Letra más grande">A+</button>
+      <button id="viewModeButton" class="mode-button" type="button" aria-pressed="false" title="Cambiar entre vista de texto y vista original del PDF">PDF</button>
+      <button id="editHymnButton" class="mode-button hidden" type="button" title="Editar esta alabanza">Editar</button>
     </div>
 
     <div id="setlistNavigation" class="setlist-navigation hidden" aria-label="Navegación rápida del listado">
@@ -167,8 +175,65 @@
     </section>
   </div>
 
+  <div id="importerModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="importerTitle">
+    <section class="importer-card">
+      <header class="shared-list-header">
+        <div>
+          <p class="eyebrow">Nueva alabanza</p>
+          <h2 id="importerTitle">Agregar alabanza</h2>
+          <p>Pega la canción tal como aparece en LaCuerda.net, con los acordes en la línea de arriba. Los acordes se quedan sobre la misma sílaba.</p>
+        </div>
+        <button id="closeImporterButton" class="modal-close" type="button" aria-label="Cerrar">×</button>
+      </header>
+
+      <div class="importer-body">
+        <div class="importer-form">
+          <div class="importer-fields">
+            <label class="field">
+              <span>Título</span>
+              <input id="importTitle" type="text" maxlength="100" placeholder="Bondad de Dios">
+            </label>
+            <label class="field">
+              <span>Artista</span>
+              <input id="importArtist" type="text" maxlength="100" placeholder="Bethel Music">
+            </label>
+            <label class="field importer-key">
+              <span>Tono</span>
+              <input id="importKey" type="text" maxlength="4" placeholder="G">
+            </label>
+          </div>
+          <label class="field importer-text">
+            <span>Letra con acordes</span>
+            <textarea id="importText" spellcheck="false" placeholder="G           C          D
+Majestad, adora a su majestad"></textarea>
+          </label>
+          <p id="importError" class="import-error hidden" role="alert"></p>
+        </div>
+
+        <div class="importer-preview">
+          <div class="importer-preview-head">
+            <strong>Vista previa</strong>
+            <span>
+              <button id="importTransposeDown" class="compact" type="button" aria-label="Bajar un semitono">−</button>
+              <b id="importPreviewKey">—</b>
+              <button id="importTransposeUp" class="compact" type="button" aria-label="Subir un semitono">+</button>
+            </span>
+          </div>
+          <div id="importPreview" class="chord-sheet importer-sheet"></div>
+        </div>
+      </div>
+
+      <div class="shared-list-actions importer-actions">
+        <button id="deleteCustomHymnButton" class="danger hidden" type="button">Eliminar</button>
+        <button id="copyChordProButton" class="secondary-dark" type="button">Copiar formato</button>
+        <button id="saveImportButton" class="primary" type="button">Guardar en este dispositivo</button>
+      </div>
+    </section>
+  </div>
+
   <div id="toast" class="toast hidden" role="status"></div>
 
-  <script src="app.js?v=3.2" defer></script>
+  <script src="chordpro.js?v=3.3" defer></script>
+  <script src="app.js?v=3.3" defer></script>
 </body>
 </html>
