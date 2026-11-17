@@ -1,14 +1,15 @@
 const MAX_LISTS = 5;
-const APP_VERSION = "3.4";
+const APP_VERSION = "3.5";
 const CUSTOM_HYMN_START = 1001;
-// Botón de eliminar en el catálogo (en prueba). Para quitarlo, cambiar a false.
-const ENABLE_DELETE_HYMNS = true;
+// Las 1–214 son las originales: no se pueden eliminar. De la 215 en adelante viven en
+// Cloudflare y solo un administrador las elimina (por completo, y las siguientes se recorren).
 // Dirección oficial del himnario (Cloudflare). La de GitHub Pages queda solo para avisar de la mudanza.
 const PUBLIC_URL = "https://himnario-ibsi.hiptank-news.workers.dev/";
 const OLD_HOSTS = ["dav04perezhip.github.io"];
 // Servicio en Cloudflare donde se guardan las alabanzas publicadas para todos (carpeta api/).
 const SHARED_API = "https://himnario-ibsi-api.hiptank-news.workers.dev";
-const SHARED_FIRST_NUMBER = 221;
+const SHARED_FIRST_NUMBER = 215;
+const ORIGINAL_LAST_NUMBER = 214;
 const FONT_SCALE_MIN = 0.7;
 const FONT_SCALE_MAX = 2;
 
@@ -45,7 +46,7 @@ let sharedSongs = loadSharedSongsCache();
 let sharedSongsFromServer = false;
 let viewMode = readSetting(STORAGE_KEYS.viewMode, "texto");
 let fontScale = Number(readSetting(STORAGE_KEYS.fontScale, "1")) || 1;
-let importerState = { editingNumber: null, editingKind: null, previewShift: 0 };
+let importerState = { editingNumber: null, editingId: null, editingKind: null, previewShift: 0 };
 let savedLists = loadSavedLists();
 let activeListId = loadActiveListId(savedLists);
 let transposeMap = loadTransposeMap();
@@ -448,7 +449,7 @@ function renderCatalog(allItems) {
           ? `<p>${escapeHtml([hymn.artist, hymn.custom ? "Agregada en este dispositivo" : ""].filter(Boolean).join(" · "))}</p>`
           : ""}
       </div>
-      ${ENABLE_DELETE_HYMNS
+      ${canDelete(hymn)
         ? `<button class="card-delete" type="button" aria-label="Eliminar ${escapeHtml(hymn.title)}" title="Eliminar">
              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>
            </button>`
@@ -1178,6 +1179,7 @@ async function refreshSharedSongs({ timeoutMs = 8000 } = {}) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     const songs = (Array.isArray(data.songs) ? data.songs : []).map((s) => ({
+      id: String(s.id || ""),
       number: Number(s.number),
       title: String(s.title || ""),
       artist: String(s.artist || ""),
@@ -1186,6 +1188,7 @@ async function refreshSharedSongs({ timeoutMs = 8000 } = {}) {
       cho: String(s.cho || "")
     }));
     const changed = JSON.stringify(songs) !== JSON.stringify(sharedSongs);
+    if (changed) applyNumberChanges(sharedSongs, songs);
     sharedSongs = songs;
     sharedSongsFromServer = true;
     writeSetting(STORAGE_KEYS.sharedSongs, JSON.stringify(songs));
@@ -1198,6 +1201,41 @@ async function refreshSharedSongs({ timeoutMs = 8000 } = {}) {
   }
 }
 
+// Cuando se elimina una alabanza, las siguientes cambian de número. Los listados y los
+// tonos guardados en este dispositivo se ajustan para que sigan apuntando a la misma canción.
+function applyNumberChanges(oldSongs, newSongs) {
+  if (!oldSongs.length || !oldSongs.every((s) => s.id)) return;
+  const newById = new Map(newSongs.map((s) => [s.id, s.number]));
+  const moved = new Map();
+  const removed = new Set();
+  oldSongs.forEach((s) => {
+    if (!newById.has(s.id)) removed.add(s.number);
+    else if (newById.get(s.id) !== s.number) moved.set(s.number, newById.get(s.id));
+  });
+  if (!moved.size && !removed.size) return;
+
+  const remap = (n) => (moved.has(n) ? moved.get(n) : removed.has(n) ? null : n);
+  savedLists.forEach((list) => {
+    const next = list.hymns.map(remap).filter((n) => n !== null);
+    if (next.join() !== list.hymns.join()) {
+      list.hymns = [...new Set(next)];
+      list.updatedAt = Date.now();
+    }
+  });
+  persistLists();
+
+  const nextTranspose = {};
+  Object.entries(transposeMap).forEach(([key, value]) => {
+    const n = Number(key);
+    if (!moved.has(n) && !removed.has(n)) nextTranspose[key] = value;
+  });
+  moved.forEach((to, from) => {
+    if (transposeMap[String(from)] !== undefined) nextTranspose[String(to)] = transposeMap[String(from)];
+  });
+  transposeMap = nextTranspose;
+  saveTransposeMap();
+}
+
 async function refreshSharedSongsAndRender() {
   const changed = await refreshSharedSongs();
   if (!changed) return;
@@ -1205,10 +1243,11 @@ async function refreshSharedSongsAndRender() {
   refreshCatalog();
   renderListManager();
   if (currentHymn?.shared) {
-    const updated = hymns.find((h) => h.number === currentHymn.number && h.shared);
+    const updated = hymns.find((h) => h.shared && h.id === currentHymn.id);
     if (updated) {
-      currentHymn = updated;
-      renderTransposedSheet();
+      openViewer(updated.number, viewerContext);
+    } else {
+      closeViewer();
     }
   }
 }
@@ -1249,6 +1288,10 @@ function forgetAdminPin() {
 
 function updateAdminUi() {
   const admin = Boolean(getAdminPin());
+  if (hymns.length && admin !== updateAdminUi.lastAdmin) {
+    updateAdminUi.lastAdmin = admin;
+    refreshCatalog();
+  }
   elements.adminButton.textContent = admin ? "Salir de administrador" : "Soy administrador";
   if (currentHymn) {
     elements.editHymnButton.classList.toggle("hidden", !(currentHymn.custom || (currentHymn.shared && admin)));
@@ -1290,6 +1333,7 @@ function openImporter(editNumber = null) {
   const editing = editNumber ? hymns.find((h) => h.number === editNumber && (h.custom || h.shared)) : null;
   importerState = {
     editingNumber: editing ? editNumber : null,
+    editingId: editing?.shared ? editing.id : null,
     editingKind: editing ? (editing.shared ? "shared" : "custom") : null,
     previewShift: 0
   };
@@ -1423,7 +1467,7 @@ async function publishImportedHymn() {
 
   elements.publishButton.disabled = true;
   const data = editingShared
-    ? await callSharedApi("PUT", `/songs/${importerState.editingNumber}`, payload)
+    ? await callSharedApi("PUT", `/songs/${importerState.editingId}`, payload)
     : await callSharedApi("POST", "/songs", payload);
   elements.publishButton.disabled = false;
   if (!data?.song) return;
@@ -1497,16 +1541,20 @@ async function deleteCustomHymn() {
 }
 
 async function deleteSharedHymn(hymn) {
-  if (!confirm(`¿Eliminar “${hymn.number}. ${hymn.title}” PARA TODOS?\n\nDesaparecerá del himnario en todos los teléfonos.`)) return false;
-  const data = await callSharedApi("DELETE", `/songs/${hymn.number}`);
+  const following = hymns.filter((h) => h.shared && h.number > hymn.number).length;
+  const shiftNote = following
+    ? `\n\nLas ${following} alabanza${following === 1 ? "" : "s"} siguiente${following === 1 ? "" : "s"} bajan un número (la ${hymn.number + 1} pasa a ser la ${hymn.number}).`
+    : "";
+  if (!confirm(`¿Eliminar “${hymn.number}. ${hymn.title}” POR COMPLETO, para todos?\n\nNo se puede deshacer.${shiftNote}`)) return false;
+  if (currentHymn?.id === hymn.id) closeViewer();
+  const data = await callSharedApi("DELETE", `/songs/${hymn.id}`);
   if (!data) return false;
   await refreshSharedSongs();
   mergeCustomHymnsIntoCatalog();
   cleanSavedListsAgainstCatalog();
   refreshCatalog();
   renderListManager();
-  if (currentHymn?.number === hymn.number) closeViewer();
-  showToast("Alabanza eliminada para todos.");
+  showToast(following ? "Eliminada. Los números siguientes se recorrieron." : "Alabanza eliminada para todos.");
   return true;
 }
 
@@ -1525,29 +1573,29 @@ function persistHiddenHymns() {
   writeSetting(STORAGE_KEYS.hiddenHymns, JSON.stringify([...hiddenHymns]));
 }
 
-function isHidden(number) {
-  return ENABLE_DELETE_HYMNS && hiddenHymns.has(number);
+function isHidden() {
+  // Ya no se ocultan alabanzas por dispositivo (las originales no se eliminan).
+  return false;
+}
+
+function canDelete(hymn) {
+  if (hymn.custom) return true;
+  return Boolean(hymn.shared && getAdminPin());
 }
 
 function deleteHymnFromCatalog(hymn) {
-  if (hymn.shared && getAdminPin()) {
+  if (!canDelete(hymn)) return;
+  if (hymn.shared) {
     deleteSharedHymn(hymn);
     return;
   }
-  if (hymn.custom) {
-    if (!confirm(`¿Eliminar “${hymn.title}” de este dispositivo?\n\nEsta alabanza la agregaste tú y no se puede recuperar.`)) return;
-    customHymns = customHymns.filter((h) => h.number !== hymn.number);
-    persistCustomHymns();
-    mergeCustomHymnsIntoCatalog();
-    cleanSavedListsAgainstCatalog();
-    renderListManager();
-    showToast("Alabanza eliminada.");
-  } else {
-    if (!confirm(`¿Eliminar “${hymn.number}. ${hymn.title}” de la lista?\n\nSolo se quita en este dispositivo y puedes recuperarla con “Mostrar eliminadas”.`)) return;
-    hiddenHymns.add(hymn.number);
-    persistHiddenHymns();
-    showToast("Alabanza eliminada de este dispositivo.");
-  }
+  if (!confirm(`¿Eliminar “${hymn.title}” de este dispositivo?\n\nEsta alabanza la agregaste tú y no se puede recuperar.`)) return;
+  customHymns = customHymns.filter((h) => h.number !== hymn.number);
+  persistCustomHymns();
+  mergeCustomHymnsIntoCatalog();
+  cleanSavedListsAgainstCatalog();
+  renderListManager();
+  showToast("Alabanza eliminada.");
   refreshCatalog();
 }
 
@@ -1566,7 +1614,7 @@ function refreshCatalog() {
 }
 
 function renderCatalogTools() {
-  const hiddenCount = ENABLE_DELETE_HYMNS ? hiddenHymns.size : 0;
+  const hiddenCount = 0;
   const customCount = customHymns.length;
   elements.restoreHiddenButton.classList.toggle("hidden", hiddenCount === 0);
   elements.restoreHiddenButton.textContent =

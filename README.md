@@ -1,6 +1,6 @@
-# Himnario IBSI - versión 3.4
+# Himnario IBSI - versión 3.5
 
-Aplicación web progresiva del Himnario IBSI con 220 alabanzas.
+Aplicación web progresiva del Himnario IBSI con las alabanzas originales (1–214) y las nuevas desde la 215.
 
 - Consulta y búsqueda por número, título o artista.
 - Letra con los acordes arriba de cada sílaba, que se acomoda a teléfono, tablet y PC.

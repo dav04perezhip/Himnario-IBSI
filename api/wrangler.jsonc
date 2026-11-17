@@ -13,8 +13,8 @@
     }
   ],
   "vars": {
-    // Las alabanzas nuevas siguen la numeración del himnario (las oficiales llegan a 220).
-    "FIRST_NUMBER": "221",
+    // Las alabanzas nuevas siguen la numeración del himnario (las originales son 1–214).
+    "FIRST_NUMBER": "215",
     "ALLOWED_ORIGINS": "https://himnario-ibsi.hiptank-news.workers.dev,https://dav04perezhip.github.io,http://localhost:8000,http://127.0.0.1:8000"
   }
   // La clave de administrador NO va aquí. Se guarda como secreto:

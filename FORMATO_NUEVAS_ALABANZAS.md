@@ -15,18 +15,28 @@ CORO
 Eso es solo cómo se guarda. En la app el acorde siempre se dibuja **arriba** de esa sílaba, en
 cualquier pantalla y en cualquier tono.
 
-## Forma rápida: publicar desde la app (desde la versión 3.4)
+## Numeración
+
+- **1 a 214:** las originales. Están dentro de la app, no se pueden eliminar y conservan su vista PDF.
+- **215 en adelante:** viven en Cloudflare (base de datos D1 `himnario-ibsi`, servicio en la carpeta `api/`).
+  Solo un administrador las publica, corrige o elimina, y los cambios llegan a todos.
+- Al **eliminar** una de la 215 en adelante se borra por completo y **las siguientes se recorren**
+  (si se elimina la 219, la 220 pasa a ser la 219). Los listados y tonos guardados en cada teléfono
+  se ajustan solos para seguir apuntando a la misma canción.
+
+## Publicar desde la app
 
 1. En la app pulsa **Soy administrador** (al final del catálogo) y escribe la clave. Solo se pide una vez por dispositivo.
 2. Pulsa **+ Agregar alabanza**, pega la canción de LaCuerda.net y revisa la vista previa.
-3. Pulsa **Publicar para todos**. Recibe el número siguiente (221, 222…) y a los demás les aparece
+3. Pulsa **Publicar para todos**. Recibe el número siguiente y a los demás les aparece
    la próxima vez que abran la app con internet.
-4. Para corregirla: ábrela y pulsa **Editar**. Para quitarla para todos: botón de basura (como administrador).
+4. Para corregirla: ábrela y pulsa **Editar**. Para eliminarla: botón de basura en el catálogo
+   (solo aparece en modo administrador y solo de la 215 en adelante).
 
-Las alabanzas publicadas se guardan en Cloudflare (base de datos D1 `himnario-ibsi`, servicio en la carpeta `api/`).
-Para cambiar la clave de administrador: en la carpeta `api` ejecutar `npx wrangler secret put ADMIN_PIN`.
+Para cambiar la clave de administrador: en la carpeta `api` ejecutar `npx wrangler secret put ADMIN_PIN`
+(en PowerShell, primero `cd` a la carpeta y luego el comando, por separado).
 
-## Agregarla de forma permanente al repositorio (opcional)
+## Agregarla dentro de la app (solo para las originales, normalmente no hace falta)
 
 1. En la app, pulsa **+ Agregar alabanza**.
 2. Pega la canción tal como está en LaCuerda.net (acordes en la línea de arriba de la letra).

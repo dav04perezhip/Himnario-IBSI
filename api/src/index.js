@@ -1,13 +1,15 @@
 // API del Himnario IBSI (Cloudflare Worker + D1).
 //
-//   GET    /songs            → todas las alabanzas publicadas (público, lo leen todos los teléfonos)
-//   GET    /auth             → comprueba la clave de administrador
-//   POST   /songs            → publicar una alabanza nueva            (requiere clave)
-//   PUT    /songs/:number    → corregir una alabanza publicada        (requiere clave)
-//   DELETE /songs/:number    → quitarla para todos                    (requiere clave)
+// Aquí viven las alabanzas de la 215 en adelante. Las 1–214 son las originales y están en la app.
 //
-// La clave se envía en la cabecera  Authorization: Bearer <clave>  y se guarda en el
-// secreto ADMIN_PIN del Worker (nunca en el código).
+//   GET    /songs        → todas (público, lo leen todos los teléfonos)
+//   GET    /auth         → comprueba la clave de administrador
+//   POST   /songs        → publicar una nueva (toma el número siguiente)        (requiere clave)
+//   PUT    /songs/:id    → corregir una                                          (requiere clave)
+//   DELETE /songs/:id    → eliminarla por completo; las siguientes se recorren   (requiere clave)
+//
+// Cada alabanza tiene un `id` que nunca cambia y un `number` que se recorre al eliminar.
+// La clave va en  Authorization: Bearer <clave>  y se guarda en el secreto ADMIN_PIN.
 
 const MAX_CHO = 40000;
 const MAX_TEXT = 100;
@@ -20,7 +22,7 @@ export default {
     try {
       const url = new URL(request.url);
       const path = url.pathname.replace(/\/+$/, "") || "/";
-      const songMatch = /^\/songs\/(\d+)$/.exec(path);
+      const songMatch = /^\/songs\/([A-Za-z0-9-]{8,64})$/.exec(path);
 
       if (request.method === "GET" && path === "/songs") return listSongs(env, cors);
       if (request.method === "GET" && path === "/auth") {
@@ -30,8 +32,8 @@ export default {
       if (path === "/songs" || songMatch) {
         if (!isAdmin(request, env)) return unauthorized(cors);
         if (request.method === "POST" && path === "/songs") return createSong(request, env, cors);
-        if (request.method === "PUT" && songMatch) return updateSong(Number(songMatch[1]), request, env, cors);
-        if (request.method === "DELETE" && songMatch) return deleteSong(Number(songMatch[1]), env, cors);
+        if (request.method === "PUT" && songMatch) return updateSong(songMatch[1], request, env, cors);
+        if (request.method === "DELETE" && songMatch) return deleteSong(songMatch[1], env, cors);
       }
 
       return json({ error: "No encontrado" }, 404, cors);
@@ -93,8 +95,11 @@ async function readSong(request) {
   return { song: { title, artist, key, flats, cho } };
 }
 
+const COLUMNS = "id, number, title, artist, key, flats, cho, updated_at";
+
 function toClient(row) {
   return {
+    id: row.id,
     number: row.number,
     title: row.title,
     artist: row.artist,
@@ -106,9 +111,7 @@ function toClient(row) {
 }
 
 async function listSongs(env, cors) {
-  const { results } = await env.DB.prepare(
-    "SELECT number, title, artist, key, flats, cho, updated_at FROM songs WHERE deleted = 0 ORDER BY number"
-  ).all();
+  const { results } = await env.DB.prepare(`SELECT ${COLUMNS} FROM songs ORDER BY number`).all();
   return json({ songs: results.map(toClient), serverTime: Date.now() }, 200, cors);
 }
 
@@ -116,33 +119,42 @@ async function createSong(request, env, cors) {
   const { song, error } = await readSong(request);
   if (error) return json({ error }, 400, cors);
 
-  const first = Number(env.FIRST_NUMBER || 221);
+  const first = Number(env.FIRST_NUMBER || 215);
   const now = Date.now();
   const row = await env.DB.prepare(
-    `INSERT INTO songs (number, title, artist, key, flats, cho, created_at, updated_at)
-     VALUES ((SELECT MAX(COALESCE(MAX(number) + 1, ?1), ?1) FROM songs), ?2, ?3, ?4, ?5, ?6, ?7, ?7)
-     RETURNING number, title, artist, key, flats, cho, updated_at`
-  ).bind(first, song.title, song.artist, song.key, song.flats, song.cho, now).first();
+    `INSERT INTO songs (id, number, title, artist, key, flats, cho, created_at, updated_at)
+     VALUES (?1, (SELECT COALESCE(MAX(number) + 1, ?2) FROM songs), ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+     RETURNING ${COLUMNS}`
+  ).bind(crypto.randomUUID(), first, song.title, song.artist, song.key, song.flats, song.cho, now).first();
 
   return json({ song: toClient(row) }, 201, cors);
 }
 
-async function updateSong(number, request, env, cors) {
+async function updateSong(id, request, env, cors) {
   const { song, error } = await readSong(request);
   if (error) return json({ error }, 400, cors);
 
   const row = await env.DB.prepare(
     `UPDATE songs SET title = ?2, artist = ?3, key = ?4, flats = ?5, cho = ?6, updated_at = ?7
-     WHERE number = ?1 AND deleted = 0
-     RETURNING number, title, artist, key, flats, cho, updated_at`
-  ).bind(number, song.title, song.artist, song.key, song.flats, song.cho, Date.now()).first();
+     WHERE id = ?1 RETURNING ${COLUMNS}`
+  ).bind(id, song.title, song.artist, song.key, song.flats, song.cho, Date.now()).first();
 
   return row ? json({ song: toClient(row) }, 200, cors) : json({ error: "No existe" }, 404, cors);
 }
 
-async function deleteSong(number, env, cors) {
-  const result = await env.DB.prepare(
-    "UPDATE songs SET deleted = 1, updated_at = ?2 WHERE number = ?1 AND deleted = 0"
-  ).bind(number, Date.now()).run();
-  return result.meta.changes ? json({ ok: true }, 200, cors) : json({ error: "No existe" }, 404, cors);
+async function deleteSong(id, env, cors) {
+  const target = await env.DB.prepare("SELECT number FROM songs WHERE id = ?1").bind(id).first();
+  if (!target) return json({ error: "No existe" }, 404, cors);
+
+  // Borrar y recorrer en una sola transacción. Se pasa por números negativos para que
+  // la columna única `number` nunca tenga dos iguales durante el cambio.
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM songs WHERE id = ?1").bind(id),
+    env.DB.prepare("UPDATE songs SET number = -(number - 1), updated_at = ?2 WHERE number > ?1")
+      .bind(target.number, now),
+    env.DB.prepare("UPDATE songs SET number = -number WHERE number < 0")
+  ]);
+
+  return json({ ok: true, removedNumber: target.number }, 200, cors);
 }
