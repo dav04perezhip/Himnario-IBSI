@@ -5,3 +5,5 @@ _document_work/
 
 # Herramientas
 node_modules/
+
+.wrangler/

@@ -1,0 +1,22 @@
+{
+  // API del Himnario IBSI: guarda las alabanzas que se publican "para todos".
+  "name": "himnario-ibsi-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "himnario-ibsi",
+      "database_id": "ac95e739-f8b8-4baf-b5b4-30cd90cb187c"
+    }
+  ],
+  "vars": {
+    // Las alabanzas nuevas siguen la numeración del himnario (las oficiales llegan a 220).
+    "FIRST_NUMBER": "221",
+    "ALLOWED_ORIGINS": "https://dav04perezhip.github.io,http://localhost:8000,http://127.0.0.1:8000"
+  }
+  // La clave de administrador NO va aquí. Se guarda como secreto:
+  //   npx wrangler secret put ADMIN_PIN
+}

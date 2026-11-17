@@ -1,0 +1,148 @@
+// API del Himnario IBSI (Cloudflare Worker + D1).
+//
+//   GET    /songs            → todas las alabanzas publicadas (público, lo leen todos los teléfonos)
+//   GET    /auth             → comprueba la clave de administrador
+//   POST   /songs            → publicar una alabanza nueva            (requiere clave)
+//   PUT    /songs/:number    → corregir una alabanza publicada        (requiere clave)
+//   DELETE /songs/:number    → quitarla para todos                    (requiere clave)
+//
+// La clave se envía en la cabecera  Authorization: Bearer <clave>  y se guarda en el
+// secreto ADMIN_PIN del Worker (nunca en el código).
+
+const MAX_CHO = 40000;
+const MAX_TEXT = 100;
+
+export default {
+  async fetch(request, env) {
+    const cors = corsHeaders(request, env);
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+
+    try {
+      const url = new URL(request.url);
+      const path = url.pathname.replace(/\/+$/, "") || "/";
+      const songMatch = /^\/songs\/(\d+)$/.exec(path);
+
+      if (request.method === "GET" && path === "/songs") return listSongs(env, cors);
+      if (request.method === "GET" && path === "/auth") {
+        return isAdmin(request, env) ? json({ ok: true }, 200, cors) : unauthorized(cors);
+      }
+
+      if (path === "/songs" || songMatch) {
+        if (!isAdmin(request, env)) return unauthorized(cors);
+        if (request.method === "POST" && path === "/songs") return createSong(request, env, cors);
+        if (request.method === "PUT" && songMatch) return updateSong(Number(songMatch[1]), request, env, cors);
+        if (request.method === "DELETE" && songMatch) return deleteSong(Number(songMatch[1]), env, cors);
+      }
+
+      return json({ error: "No encontrado" }, 404, cors);
+    } catch (error) {
+      console.error(error);
+      return json({ error: "Error del servidor" }, 500, cors);
+    }
+  }
+};
+
+function corsHeaders(request, env) {
+  const origin = request.headers.get("Origin") || "";
+  const allowed = String(env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim());
+  return {
+    "Access-Control-Allow-Origin": allowed.includes(origin) ? origin : allowed[0] || "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin"
+  };
+}
+
+function json(data, status, headers) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...headers, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }
+  });
+}
+
+function unauthorized(cors) {
+  return json({ error: "Clave de administrador incorrecta" }, 401, cors);
+}
+
+function isAdmin(request, env) {
+  const expected = String(env.ADMIN_PIN || "");
+  const header = request.headers.get("Authorization") || "";
+  const given = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (!expected || given.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i += 1) diff |= expected.charCodeAt(i) ^ given.charCodeAt(i);
+  return diff === 0;
+}
+
+async function readSong(request) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return { error: "Datos no válidos" };
+  }
+  const title = String(body.title || "").trim().slice(0, MAX_TEXT);
+  const artist = String(body.artist || "").trim().slice(0, MAX_TEXT);
+  const key = String(body.key || "C").trim().slice(0, 4) || "C";
+  const flats = body.flats ? 1 : 0;
+  const cho = String(body.cho || "");
+  if (!title) return { error: "Falta el título" };
+  if (!cho.trim() || !/\[[^\]]+\]/.test(cho)) return { error: "Falta la letra con acordes" };
+  if (cho.length > MAX_CHO) return { error: "La alabanza es demasiado larga" };
+  return { song: { title, artist, key, flats, cho } };
+}
+
+function toClient(row) {
+  return {
+    number: row.number,
+    title: row.title,
+    artist: row.artist,
+    originalKey: row.key,
+    preferFlats: Boolean(row.flats),
+    cho: row.cho,
+    updatedAt: row.updated_at
+  };
+}
+
+async function listSongs(env, cors) {
+  const { results } = await env.DB.prepare(
+    "SELECT number, title, artist, key, flats, cho, updated_at FROM songs WHERE deleted = 0 ORDER BY number"
+  ).all();
+  return json({ songs: results.map(toClient), serverTime: Date.now() }, 200, cors);
+}
+
+async function createSong(request, env, cors) {
+  const { song, error } = await readSong(request);
+  if (error) return json({ error }, 400, cors);
+
+  const first = Number(env.FIRST_NUMBER || 221);
+  const now = Date.now();
+  const row = await env.DB.prepare(
+    `INSERT INTO songs (number, title, artist, key, flats, cho, created_at, updated_at)
+     VALUES ((SELECT MAX(COALESCE(MAX(number) + 1, ?1), ?1) FROM songs), ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+     RETURNING number, title, artist, key, flats, cho, updated_at`
+  ).bind(first, song.title, song.artist, song.key, song.flats, song.cho, now).first();
+
+  return json({ song: toClient(row) }, 201, cors);
+}
+
+async function updateSong(number, request, env, cors) {
+  const { song, error } = await readSong(request);
+  if (error) return json({ error }, 400, cors);
+
+  const row = await env.DB.prepare(
+    `UPDATE songs SET title = ?2, artist = ?3, key = ?4, flats = ?5, cho = ?6, updated_at = ?7
+     WHERE number = ?1 AND deleted = 0
+     RETURNING number, title, artist, key, flats, cho, updated_at`
+  ).bind(number, song.title, song.artist, song.key, song.flats, song.cho, Date.now()).first();
+
+  return row ? json({ song: toClient(row) }, 200, cors) : json({ error: "No existe" }, 404, cors);
+}
+
+async function deleteSong(number, env, cors) {
+  const result = await env.DB.prepare(
+    "UPDATE songs SET deleted = 1, updated_at = ?2 WHERE number = ?1 AND deleted = 0"
+  ).bind(number, Date.now()).run();
+  return result.meta.changes ? json({ ok: true }, 200, cors) : json({ error: "No existe" }, 404, cors);
+}

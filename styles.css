@@ -1097,6 +1097,16 @@ main {
   margin-top: 1.2rem;
 }
 
+.link-button {
+  margin-left: auto;
+  border: 0;
+  padding: 0.4rem 0.2rem;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.82rem;
+  text-decoration: underline;
+}
+
 .catalog-tools.hidden,
 .catalog-tools .hidden {
   display: none;

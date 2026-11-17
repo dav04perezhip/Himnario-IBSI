@@ -1,4 +1,4 @@
-# Himnario IBSI - versión 3.3
+# Himnario IBSI - versión 3.4
 
 Aplicación web progresiva del Himnario IBSI con 220 alabanzas.
 
@@ -6,6 +6,7 @@ Aplicación web progresiva del Himnario IBSI con 220 alabanzas.
 - Letra con los acordes arriba de cada sílaba, que se acomoda a teléfono, tablet y PC.
 - Vista original del PDF con el botón **PDF**.
 - Transposición de acordes y tamaño de letra ajustable.
-- Agregar alabanzas pegándolas desde LaCuerda.net (ver `FORMATO_NUEVAS_ALABANZAS.md`).
+- Agregar alabanzas pegándolas desde LaCuerda.net y publicarlas para todos (ver `FORMATO_NUEVAS_ALABANZAS.md`).
+- Las alabanzas publicadas se guardan en Cloudflare (carpeta `api/`).
 - Creación, guardado y uso compartido de listados.
 - Instalación como aplicación y funcionamiento sin conexión.
