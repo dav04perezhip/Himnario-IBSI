@@ -1,0 +1,7 @@
+# Archivos de trabajo que no forman parte de la app
+_document_work/
+*.docx
+~$*
+
+# Herramientas
+node_modules/

@@ -1,5 +1,5 @@
 const MAX_LISTS = 5;
-const APP_VERSION = "2.8";
+const APP_VERSION = "3.2";
 
 const STORAGE_KEYS = {
   legacySetlist: "ibsi-setlist-v1",
@@ -726,6 +726,7 @@ function renderTransposedSheet() {
     textElement.setAttribute("font-weight", String(item.fontWeight));
     textElement.setAttribute("font-style", item.fontStyle || "normal");
     if (item.textAnchor) textElement.setAttribute("text-anchor", item.textAnchor);
+    if (item.isChord) textElement.setAttribute("data-chord-token", "true");
     textElement.setAttribute("fill", item.color || (isChordElement ? "#075e6a" : "#111111"));
     textElement.setAttribute("text-rendering", "geometricPrecision");
     textElement.textContent = text;
@@ -735,8 +736,53 @@ function renderTransposedSheet() {
   svg.appendChild(group);
   elements.transposedSheet.replaceChildren(svg);
 
+  if (currentHymn.number >= 215) {
+    resolveNewHymnChordCollisions(group);
+  }
+
   requestAnimationFrame(() => {
     applyContentFitViewBox(svg, group, layout);
+  });
+}
+
+function resolveNewHymnChordCollisions(group) {
+  const chordElements = [...group.querySelectorAll('text[data-chord-token="true"]')];
+  const rows = new Map();
+
+  chordElements.forEach((element) => {
+    const rowKey = roundValue(Number(element.getAttribute("y")));
+    if (!rows.has(rowKey)) rows.set(rowKey, []);
+    rows.get(rowKey).push(element);
+  });
+
+  rows.forEach((row) => {
+    row.sort((first, second) =>
+      Number(first.getAttribute("x")) - Number(second.getAttribute("x"))
+    );
+
+    for (let index = 0; index < row.length - 1; index += 1) {
+      const current = row[index];
+      const next = row[index + 1];
+      const currentX = Number(current.getAttribute("x"));
+      const nextX = Number(next.getAttribute("x"));
+      const availableWidth = Math.max(4, nextX - currentX - 6);
+      const currentWidth = current.getBBox().width;
+
+      if (currentWidth <= availableWidth) continue;
+
+      const originalSize = Number(current.getAttribute("font-size"));
+      const reducedSize = Math.max(
+        7,
+        Math.floor(originalSize * (availableWidth / currentWidth) * 100) / 100
+      );
+
+      current.setAttribute("font-size", String(reducedSize));
+
+      if (current.getBBox().width > availableWidth) {
+        current.setAttribute("textLength", String(roundValue(availableWidth)));
+        current.setAttribute("lengthAdjust", "spacingAndGlyphs");
+      }
+    }
   });
 }
 

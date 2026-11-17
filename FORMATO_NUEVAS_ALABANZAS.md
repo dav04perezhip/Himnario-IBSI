@@ -5,3 +5,6 @@
 3. Se conserva la posición del acorde sobre la palabra o sílaba indicada en el documento.
 4. Solo se adapta el estilo visual para que coincida con el Himnario IBSI: contenido centrado, tipografía consistente y diseño responsive.
 5. Se registra título, artista o autor según aparezca en la fuente.
+6. Cada acorde se guarda como un token musical completo y transponible, incluidos los acordes con bajo alternativo como `B/D#` o `A/E`.
+7. En las alabanzas nuevas, los acordes cercanos se miden después de cada transposición. Si pueden superponerse, se reduce únicamente su tamaño o ancho visual sin cambiar la coordenada que los alinea con la sílaba.
+8. Antes de entregar una incorporación se revisan visualmente las posiciones en escritorio y móvil y se prueba la transposición.

@@ -1288,14 +1288,41 @@
     "title": "De Rodillas",
     "artist": "Ericson Alexander Molano",
     "originalKey": "G",
-    "preferFlats": false,
-    "album": ""
+    "preferFlats": false
   },
   {
     "number": 216,
     "title": "Bondad de Dios",
     "artist": "Bethel Music",
     "originalKey": "A#",
+    "preferFlats": false
+  },
+  {
+    "number": 217,
+    "title": "Abre mis ojos",
+    "artist": "Danilo Montero",
+    "originalKey": "E",
+    "preferFlats": false
+  },
+  {
+    "number": 218,
+    "title": "Ven, es hora de adorarle",
+    "artist": "Marco Barrientos",
+    "originalKey": "E",
+    "preferFlats": false
+  },
+  {
+    "number": 219,
+    "title": "Cada mañana",
+    "artist": "Jesús Adrián Romero",
+    "originalKey": "D",
+    "preferFlats": false
+  },
+  {
+    "number": 220,
+    "title": "Ya no soy esclavo",
+    "artist": "Julio Melgar",
+    "originalKey": "A",
     "preferFlats": false
   }
 ]
