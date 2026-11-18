@@ -1,5 +1,5 @@
 const MAX_LISTS = 5;
-const APP_VERSION = "3.8";
+const APP_VERSION = "3.9";
 const CUSTOM_HYMN_START = 1001;
 // Las 1–214 son las originales: no se pueden eliminar. De la 215 en adelante viven en
 // Cloudflare y solo un administrador las elimina (por completo, y las siguientes se recorren).
@@ -1510,7 +1510,7 @@ function openImporter(editNumber = null) {
 // Marca la parte donde está el cursor: Estrofa, Coro, Puente…
 // - Si el cursor está en una etiqueta (o en la primera línea justo debajo de una), la cambia.
 // - Si no, pone la etiqueta en la línea del cursor; si es a mitad de un bloque, lo parte en dos.
-// - "Quitar" borra la etiqueta de esa parte.
+// - "Quitar división" borra el nombre de esa parte y la une con la de arriba.
 const SECTION_LABEL_LINE = /^\s*(?:coro|puente|pre-?coro|precoro|intro|introducci[oó]n|final|estribillo|verso|estrofa|interludio|outro|instrumental|solo|tag|coda|nota)(?:\s*\d+)?\s*:?\s*(?:\(?x\s*\d+\)?)?\s*$/i;
 
 function markSection(label) {
@@ -1529,12 +1529,31 @@ function markSection(label) {
 
   let focusRow;
   if (label === "") {
-    if (labelRow < 0) {
-      showToast("Pon el cursor en la etiqueta que quieres quitar.");
-      return;
+    // Quitar la división: se borra el nombre de esta parte y se une con la parte de arriba.
+    let top;
+    if (SECTION_LABEL_LINE.test(lines[row] || "")) {
+      top = row;
+      lines.splice(row, 1);
+    } else {
+      let start = row;
+      while (start > 0 && lines[start - 1].trim() && !SECTION_LABEL_LINE.test(lines[start - 1])) start -= 1;
+      top = start;
+      if (start > 0 && SECTION_LABEL_LINE.test(lines[start - 1])) {
+        top = start - 1;
+        lines.splice(top, 1);
+      } else if (start > 1 && !lines[start - 1].trim() && SECTION_LABEL_LINE.test(lines[start - 2])) {
+        top = start - 2;
+        lines.splice(top, 1);
+      }
     }
-    lines.splice(labelRow, 1);
-    focusRow = labelRow;
+    // Quitar las líneas vacías que separaban esta parte de la de arriba (y la que quedó tras el nombre).
+    while (top < lines.length && !lines[top].trim()) lines.splice(top, 1);
+    while (top > 0 && !lines[top - 1].trim()) {
+      lines.splice(top - 1, 1);
+      top -= 1;
+    }
+    if (top === 0) showToast("Esta es la primera parte: solo se quitó su nombre.");
+    focusRow = Math.min(top, lines.length - 1);
   } else if (labelRow >= 0) {
     lines[labelRow] = label;
     focusRow = labelRow;
