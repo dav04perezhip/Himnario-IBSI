@@ -11,6 +11,8 @@
   const SECTION_PREFIX = new RegExp(`^\\s*((?:${SECTION_WORDS})(?:\\s*\\d+)?\\s*:)\\s*`, "i");
   // "Nota" sola en su línea marca que el bloque siguiente es una nota (no se canta).
   const NOTE_LINE = /^\s*nota\s*:?\s*$/i;
+  // "Sin etiqueta": la parte se muestra separada pero sin nombre (y no se numera como estrofa).
+  const NO_LABEL_LINE = /^\s*sin\s+(?:etiqueta|nombre)\s*$/i;
   const VERSE_LABEL = /^(estrofa|verso)\s*(\d+)?$/i;
 
   const CHORD_RE =
@@ -50,7 +52,7 @@
         let text = raw.replace(/\s+$/, "");
         const plain = text.replace(/\[[^\]]*\]/g, "");
 
-        if ((SECTION_LINE.test(plain) || NOTE_LINE.test(plain)) && !/\[/.test(text)) {
+        if ((SECTION_LINE.test(plain) || NOTE_LINE.test(plain) || NO_LABEL_LINE.test(plain)) && !/\[/.test(text)) {
           lines.push({ type: "section", text: plain.trim() });
           return;
         }
@@ -164,6 +166,11 @@
     const hasLyrics = (group) => group.lines.some((l) => lineText(l).trim());
     groups.forEach((group) => {
       const startsWithNota = group.lines.length && /^\s*nota\b/i.test(lineText(group.lines[0]));
+      if (NO_LABEL_LINE.test(group.label)) {
+        group.noLabel = true;
+        group.hideLabel = true;
+        return;
+      }
       if (/^nota$/i.test(group.label)) {
         group.kind = "note";
         if (startsWithNota) group.hideLabel = true;
@@ -199,6 +206,7 @@
     const seen = new Set();
     groups.forEach((group) => {
       const key = group.label.toLowerCase();
+      if (group.noLabel) return;
       if (!group.lines.length && seen.has(key)) group.repeat = true;
       if (group.lines.length) seen.add(key);
     });
@@ -214,7 +222,8 @@
       if (out.length) out.push("");
       let label = group.label;
       if (group.kind === "verse" && VERSE_LABEL.test(label)) label = label.replace(/\s*\d+$/, "");
-      if (label && !group.hideLabel && !(group.kind === "note" && !group.explicit)) out.push(label);
+      if (group.noLabel) out.push("Sin etiqueta");
+      else if (label && !group.hideLabel && !(group.kind === "note" && !group.explicit)) out.push(label);
       group.lines.forEach((line) => {
         out.push(line.segments.map((s) => `${s.chord !== null ? `[${s.chord}]` : ""}${s.text}`).join(""));
       });

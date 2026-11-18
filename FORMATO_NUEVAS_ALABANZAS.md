@@ -41,7 +41,9 @@ Debajo del texto hay botones para cambiarlas: pon el cursor en la primera línea
 **Estrofa**, **Coro**, **Pre-coro**, **Puente**, **Intro**, **Final** o **Nota**.
 
 - Si ya tenía nombre, se cambia. Si el cursor está a mitad de una parte, la parte se divide en dos ahí.
-- **Quitar**: pon el cursor sobre el nombre y púlsalo. Esa parte vuelve a numerarse sola como estrofa.
+- **Quitar etiqueta**: la parte queda separada, pero sin nombre. En el texto se escribe `Sin etiqueta`
+  y la app no la vuelve a numerar.
+- **Unir con la de arriba**: borra el nombre de esa parte y la junta con la parte de arriba.
 - `Estrofa` sin número se numera sola (Estrofa 1, 2, 3…). `Estrofa 3` fija el número.
 - Un nombre que ya salió antes y va solo, sin letra debajo (por ejemplo `Coro` al final), se muestra
   como "Coro (se repite)".

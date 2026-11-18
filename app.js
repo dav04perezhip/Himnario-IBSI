@@ -1,5 +1,5 @@
 const MAX_LISTS = 5;
-const APP_VERSION = "3.9";
+const APP_VERSION = "3.10";
 const CUSTOM_HYMN_START = 1001;
 // Las 1–214 son las originales: no se pueden eliminar. De la 215 en adelante viven en
 // Cloudflare y solo un administrador las elimina (por completo, y las siguientes se recorren).
@@ -1510,8 +1510,9 @@ function openImporter(editNumber = null) {
 // Marca la parte donde está el cursor: Estrofa, Coro, Puente…
 // - Si el cursor está en una etiqueta (o en la primera línea justo debajo de una), la cambia.
 // - Si no, pone la etiqueta en la línea del cursor; si es a mitad de un bloque, lo parte en dos.
-// - "Quitar división" borra el nombre de esa parte y la une con la de arriba.
-const SECTION_LABEL_LINE = /^\s*(?:coro|puente|pre-?coro|precoro|intro|introducci[oó]n|final|estribillo|verso|estrofa|interludio|outro|instrumental|solo|tag|coda|nota)(?:\s*\d+)?\s*:?\s*(?:\(?x\s*\d+\)?)?\s*$/i;
+// - "Quitar etiqueta" deja la parte separada pero sin nombre (escribe "Sin etiqueta").
+// - "Unir con la de arriba" borra el nombre de esa parte y la une con la de arriba.
+const SECTION_LABEL_LINE = /^\s*(?:coro|puente|pre-?coro|precoro|intro|introducci[oó]n|final|estribillo|verso|estrofa|interludio|outro|instrumental|solo|tag|coda|nota|sin\s+etiqueta|sin\s+nombre)(?:\s*\d+)?\s*:?\s*(?:\(?x\s*\d+\)?)?\s*$/i;
 
 function markSection(label) {
   const textarea = elements.importText;
