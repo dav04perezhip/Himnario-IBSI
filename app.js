@@ -1,5 +1,5 @@
 const MAX_LISTS = 5;
-const APP_VERSION = "3.11";
+const APP_VERSION = "3.12";
 const CUSTOM_HYMN_START = 1001;
 // Las 1–214 son las originales: no se pueden eliminar. De la 215 en adelante viven en
 // Cloudflare y solo un administrador las elimina (por completo, y las siguientes se recorren).
@@ -30,7 +30,8 @@ const STORAGE_KEYS = {
   viewMode: "ibsi-view-mode-v1",
   fontScale: "ibsi-font-scale-v1",
   pinchHint: "ibsi-pinch-hint-v1",
-  tips: "ibsi-tips-v1"
+  tips: "ibsi-tips-v1",
+  theme: "ibsi-theme-v1"
 };
 
 const SHARP_NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -42,6 +43,7 @@ const NOTE_INDEX = {
 };
 
 let hymns = [];
+let catalogFilter = "all";
 let originalHymns = [];
 let hymnLayouts = null;
 let hymnLayoutsPromise = null;
@@ -143,6 +145,10 @@ const elements = {
   adminButton: document.querySelector("#adminButton"),
   deleteCustomHymnButton: document.querySelector("#deleteCustomHymnButton"),
   catalogTools: document.querySelector("#catalogTools"),
+  settingsView: document.querySelector("#settingsView"),
+  catalogFilters: document.querySelector("#catalogFilters"),
+  themeSwitch: document.querySelector("#themeSwitch"),
+  customHymnsNote: document.querySelector("#customHymnsNote"),
   sendCustomHymnsButton: document.querySelector("#sendCustomHymnsButton"),
   restoreHiddenButton: document.querySelector("#restoreHiddenButton"),
   sectionButtons: document.querySelector("#sectionButtons")
@@ -205,6 +211,7 @@ function wireEvents() {
   elements.searchInput.addEventListener("input", () => {
     const query = normalize(elements.searchInput.value.trim());
     const filtered = hymns.filter((hymn) => {
+      if (!matchesCatalogFilter(hymn)) return false;
       return (
         String(hymn.number).includes(query) ||
         normalize(hymn.title).includes(query) ||
@@ -214,6 +221,23 @@ function wireEvents() {
     });
     renderCatalog(filtered);
   });
+
+  elements.catalogFilters.addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-filter]");
+    if (!chip) return;
+    catalogFilter = chip.dataset.filter;
+    elements.catalogFilters.querySelectorAll("[data-filter]").forEach((item) => {
+      item.classList.toggle("active", item === chip);
+      item.setAttribute("aria-pressed", String(item === chip));
+    });
+    refreshCatalog();
+  });
+
+  elements.themeSwitch.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-theme-choice]");
+    if (button) setTheme(button.dataset.themeChoice);
+  });
+  updateThemeSwitch();
 
   elements.tabs.forEach((tab) => {
     tab.addEventListener("click", () => switchView(tab.dataset.view));
@@ -479,8 +503,8 @@ function renderCatalog(allItems) {
   elements.hymnGrid.innerHTML = "";
   elements.emptySearch.classList.toggle("hidden", items.length > 0);
   elements.catalogCount.textContent = items.length === visibleTotal
-    ? `${visibleTotal} alabanzas disponibles. Busca por número, nombre o artista.`
-    : `${items.length} resultado${items.length === 1 ? "" : "s"} encontrado${items.length === 1 ? "" : "s"}.`;
+    ? `${visibleTotal} alabanzas`
+    : `${items.length} resultado${items.length === 1 ? "" : "s"}`;
   renderCatalogTools();
 
   const fragment = document.createDocumentFragment();
@@ -505,7 +529,8 @@ function renderCatalog(allItems) {
       <button class="card-open" type="button" aria-label="Abrir ${escapeHtml(hymn.title)}">›</button>
     `;
 
-    card.querySelector(".card-open").addEventListener("click", () => openViewer(hymn.number));
+    // Toda la tarjeta abre la alabanza (no solo la flecha).
+    card.addEventListener("click", () => openViewer(hymn.number));
     card.querySelector(".card-delete")?.addEventListener("click", (event) => {
       event.stopPropagation();
       deleteHymnFromCatalog(hymn);
@@ -1924,6 +1949,12 @@ function renderCatalogTools() {
   elements.restoreHiddenButton.textContent =
     `Mostrar eliminadas (${hiddenCount})`;
   elements.sendCustomHymnsButton.classList.toggle("hidden", customCount === 0);
+  elements.customHymnsNote.textContent = customCount
+    ? `Tienes ${customCount} alabanza${customCount === 1 ? "" : "s"} guardada${customCount === 1 ? "" : "s"} solo en este teléfono.`
+    : "No tienes alabanzas guardadas solo en este teléfono.";
+  const mineChip = elements.catalogFilters.querySelector('[data-filter="mias"]');
+  mineChip.classList.toggle("hidden", customCount === 0);
+  if (customCount === 0 && catalogFilter === "mias") catalogFilter = "all";
   elements.sendCustomHymnsButton.textContent =
     `Enviar mis alabanzas agregadas (${customCount}) a otro teléfono`;
   elements.catalogTools.classList.remove("hidden");
@@ -2391,11 +2422,51 @@ function uniqueImportedListName(baseName) {
 }
 
 function switchView(view) {
-  const showCatalog = view === "catalog";
-  elements.catalogView.classList.toggle("active", showCatalog);
-  elements.setlistView.classList.toggle("active", !showCatalog);
+  const views = { catalog: elements.catalogView, setlist: elements.setlistView, settings: elements.settingsView };
+  if (!views[view]) view = "catalog";
+  Object.entries(views).forEach(([name, element]) => element.classList.toggle("active", name === view));
   elements.tabs.forEach((tab) => {
-    tab.classList.toggle("active", tab.dataset.view === view);
+    const active = tab.dataset.view === view;
+    tab.classList.toggle("active", active);
+    if (active) tab.setAttribute("aria-current", "page");
+    else tab.removeAttribute("aria-current");
+  });
+  window.scrollTo({ top: 0 });
+}
+
+// ---------- Filtros del catálogo ----------
+
+function matchesCatalogFilter(hymn) {
+  if (catalogFilter === "originales") return !hymn.custom && !hymn.shared;
+  if (catalogFilter === "nuevas") return Boolean(hymn.shared);
+  if (catalogFilter === "mias") return Boolean(hymn.custom);
+  return true;
+}
+
+// ---------- Tema (Ajustes) ----------
+
+function currentThemeChoice() {
+  const saved = readSetting(STORAGE_KEYS.theme, "auto");
+  return saved === "light" || saved === "dark" ? saved : "auto";
+}
+
+function setTheme(choice) {
+  if (choice === "light" || choice === "dark") {
+    document.documentElement.dataset.theme = choice;
+  } else {
+    choice = "auto";
+    delete document.documentElement.dataset.theme;
+  }
+  writeSetting(STORAGE_KEYS.theme, choice);
+  updateThemeSwitch();
+}
+
+function updateThemeSwitch() {
+  const choice = currentThemeChoice();
+  elements.themeSwitch.querySelectorAll("[data-theme-choice]").forEach((button) => {
+    const active = button.dataset.themeChoice === choice;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-checked", String(active));
   });
 }
 
