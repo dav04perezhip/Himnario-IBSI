@@ -18,6 +18,7 @@ cualquier pantalla y en cualquier tono.
 ## Numeración
 
 - **1 a 214:** las originales. Están dentro de la app, no se pueden eliminar y conservan su vista PDF.
+  Un administrador sí puede corregirlas (ver más abajo).
 - **215 en adelante:** viven en Cloudflare (base de datos D1 `himnario-ibsi`, servicio en la carpeta `api/`).
   Solo un administrador las publica, corrige o elimina, y los cambios llegan a todos.
 - Al **eliminar** una de la 215 en adelante se borra por completo y **las siguientes se recorren**
@@ -32,6 +33,26 @@ cualquier pantalla y en cualquier tono.
    la próxima vez que abran la app con internet.
 4. Para corregirla: ábrela y pulsa **Editar**. Para eliminarla: botón de basura en el catálogo
    (solo aparece en modo administrador y solo de la 215 en adelante).
+
+### Estrofas, coros y demás partes
+
+Al editar, el texto muestra cada parte con su nombre en una línea propia (`Estrofa`, `Coro`, `Final`…).
+Debajo del texto hay botones para cambiarlas: pon el cursor en la primera línea de una parte y pulsa
+**Estrofa**, **Coro**, **Pre-coro**, **Puente**, **Intro**, **Final** o **Nota**.
+
+- Si ya tenía nombre, se cambia. Si el cursor está a mitad de una parte, la parte se divide en dos ahí.
+- **Quitar**: pon el cursor sobre el nombre y púlsalo. Esa parte vuelve a numerarse sola como estrofa.
+- `Estrofa` sin número se numera sola (Estrofa 1, 2, 3…). `Estrofa 3` fija el número.
+- Un nombre que ya salió antes y va solo, sin letra debajo (por ejemplo `Coro` al final), se muestra
+  como "Coro (se repite)".
+- También se puede escribir a mano. Cualquier línea vacía separa una parte de otra.
+
+### Corregir una original (1–214)
+
+En modo administrador, el botón **Editar** aparece también en las originales. Los cambios se guardan
+en Cloudflare (tabla `fixes`) y llegan a todos; el archivo original de la app no se toca. Una original
+corregida ya no muestra la vista PDF, porque la página del PDF no coincidiría. Para deshacerlo:
+**Editar** → **Volver a la original**.
 
 Para cambiar la clave de administrador: en la carpeta `api` ejecutar `npx wrangler secret put ADMIN_PIN`
 (en PowerShell, primero `cd` a la carpeta y luego el comando, por separado).

@@ -9,6 +9,9 @@
     "coro|puente|pre-?coro|precoro|intro|introducci[oó]n|final|estribillo|verso|estrofa|interludio|outro|instrumental|solo|tag|coda";
   const SECTION_LINE = new RegExp(`^\\s*(?:${SECTION_WORDS})(?:\\s*\\d+)?\\s*:?\\s*(?:\\(?x\\s*\\d+\\)?)?\\s*$`, "i");
   const SECTION_PREFIX = new RegExp(`^\\s*((?:${SECTION_WORDS})(?:\\s*\\d+)?\\s*:)\\s*`, "i");
+  // "Nota" sola en su línea marca que el bloque siguiente es una nota (no se canta).
+  const NOTE_LINE = /^\s*nota\s*:?\s*$/i;
+  const VERSE_LABEL = /^(estrofa|verso)\s*(\d+)?$/i;
 
   const CHORD_RE =
     /^\(?[A-G](?:#|b)?(?:maj|min|m|M|dim|aug|sus|add|º|°|\+|-)?[0-9]*(?:\([^)]*\))?(?:(?:sus|add|maj|M|b|#)?[0-9]+)*(?:\/[A-G](?:#|b)?)?\)?$/;
@@ -47,7 +50,7 @@
         let text = raw.replace(/\s+$/, "");
         const plain = text.replace(/\[[^\]]*\]/g, "");
 
-        if (SECTION_LINE.test(plain) && !/\[/.test(text)) {
+        if ((SECTION_LINE.test(plain) || NOTE_LINE.test(plain)) && !/\[/.test(text)) {
           lines.push({ type: "section", text: plain.trim() });
           return;
         }
@@ -118,7 +121,8 @@
     groupStanzas(parsed.lines).forEach((group) => {
       const stanza = document.createElement("section");
       stanza.className = `cs-stanza${group.kind ? ` cs-${group.kind}` : ""}`;
-      if (group.label) {
+      if (group.repeat) stanza.classList.add("cs-repeat");
+      if (group.label && !group.hideLabel) {
         const label = document.createElement("div");
         label.className = "cs-section";
         label.textContent = group.label;
@@ -131,22 +135,25 @@
   }
 
   // Agrupa las líneas en bloques (separados por línea vacía o por una etiqueta como CORO).
+  // Lo que el usuario marca a mano (Coro, Puente, Estrofa, Nota…) siempre manda.
   // Los bloques con letra que no traen etiqueta se numeran: Estrofa 1, Estrofa 2…
+  // Una etiqueta sola, sin letra debajo (p. ej. "Coro" otra vez), se muestra como aviso de repetir.
   function groupStanzas(lines) {
     const groups = [];
     let current = { label: "", lines: [] };
     const close = () => {
-      if (current.lines.length) groups.push(current);
-      else if (current.label && groups.length === 0) groups.push(current);
+      if (current.lines.length || current.label) groups.push(current);
       current = { label: "", lines: [] };
     };
 
     lines.forEach((line) => {
       if (line.type === "empty") {
-        close();
-      } else if (line.type === "section") {
+        // "Coro" + línea vacía + letra: la etiqueta sigue siendo de la letra que viene.
         if (current.lines.length) close();
+      } else if (line.type === "section") {
+        close();
         current.label = line.text.replace(/:\s*$/, "").trim();
+        current.explicit = true;
       } else {
         current.lines.push(line);
       }
@@ -156,14 +163,29 @@
     const lineText = (l) => l.segments.map((s) => s.text).join("");
     const hasLyrics = (group) => group.lines.some((l) => lineText(l).trim());
     groups.forEach((group) => {
-      if (group.lines.length && /^\s*nota\b/i.test(lineText(group.lines[0]))) group.kind = "note";
+      const startsWithNota = group.lines.length && /^\s*nota\b/i.test(lineText(group.lines[0]));
+      if (/^nota$/i.test(group.label)) {
+        group.kind = "note";
+        if (startsWithNota) group.hideLabel = true;
+      } else if (!group.label && startsWithNota) {
+        group.kind = "note";
+      }
     });
     const lyricGroups = groups.filter((g) => hasLyrics(g) && g.kind !== "note");
     const lastLyric = lyricGroups[lyricGroups.length - 1];
+    const autoVerses = lyricGroups.length >= 2 || lyricGroups.some((g) => g.explicit);
     let verse = 0;
     groups.forEach((group) => {
-      if (/^coro/i.test(group.label) || /^estribillo/i.test(group.label)) group.kind = "chorus";
-      if (group.label || group.kind === "note" || !hasLyrics(group) || lyricGroups.length < 2) return;
+      if (/^(coro|estribillo)/i.test(group.label)) group.kind = "chorus";
+      const verseLabel = VERSE_LABEL.exec(group.label);
+      if (verseLabel) {
+        // "Estrofa" sin número se numera sola; "Estrofa 3" fija el conteo en 3.
+        verse = verseLabel[2] ? Number(verseLabel[2]) : verse + 1;
+        group.label = `${verseLabel[1].charAt(0).toUpperCase()}${verseLabel[1].slice(1).toLowerCase()} ${verse}`;
+        group.kind = "verse";
+        return;
+      }
+      if (group.label || group.kind === "note" || !hasLyrics(group) || !autoVerses) return;
       // Una sola línea al final, después de varias estrofas: es el cierre de la alabanza.
       if (group === lastLyric && group.lines.length === 1 && lyricGroups.length >= 3) {
         group.label = "Final";
@@ -173,7 +195,31 @@
       group.label = `Estrofa ${verse}`;
       group.kind = "verse";
     });
+    // Una etiqueta sin letra que ya salió antes (p. ej. "Coro"): se canta otra vez esa parte.
+    const seen = new Set();
+    groups.forEach((group) => {
+      const key = group.label.toLowerCase();
+      if (!group.lines.length && seen.has(key)) group.repeat = true;
+      if (group.lines.length) seen.add(key);
+    });
     return groups;
+  }
+
+  // Devuelve el texto con cada división escrita a mano ("Estrofa", "Coro", "Final"…),
+  // para que se pueda ver y cambiar en el editor. Se ve igual que antes de escribirlas.
+  function withSectionLabels(source) {
+    const parsed = parse(source);
+    const out = [];
+    groupStanzas(parsed.lines).forEach((group) => {
+      if (out.length) out.push("");
+      let label = group.label;
+      if (group.kind === "verse" && VERSE_LABEL.test(label)) label = label.replace(/\s*\d+$/, "");
+      if (label && !group.hideLabel && !(group.kind === "note" && !group.explicit)) out.push(label);
+      group.lines.forEach((line) => {
+        out.push(line.segments.map((s) => `${s.chord !== null ? `[${s.chord}]` : ""}${s.text}`).join(""));
+      });
+    });
+    return out.join("\n");
   }
 
   function renderLine(segments, transpose, showChords) {
@@ -374,6 +420,7 @@
     looksLikeChordPro,
     isChordLine,
     firstChord,
-    stringify
+    stringify,
+    withSectionLabels
   };
 })();

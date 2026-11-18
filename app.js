@@ -1,5 +1,5 @@
 const MAX_LISTS = 5;
-const APP_VERSION = "3.7";
+const APP_VERSION = "3.8";
 const CUSTOM_HYMN_START = 1001;
 // Las 1–214 son las originales: no se pueden eliminar. De la 215 en adelante viven en
 // Cloudflare y solo un administrador las elimina (por completo, y las siguientes se recorren).
@@ -23,6 +23,7 @@ const STORAGE_KEYS = {
   customHymns: "ibsi-custom-hymns-v1",
   hiddenHymns: "ibsi-hidden-hymns-v1",
   sharedSongs: "ibsi-shared-songs-cache-v1",
+  originalFixes: "ibsi-original-fixes-cache-v1",
   adminPin: "ibsi-admin-pin-v1",
   viewMode: "ibsi-view-mode-v1",
   fontScale: "ibsi-font-scale-v1",
@@ -38,12 +39,14 @@ const NOTE_INDEX = {
 };
 
 let hymns = [];
+let originalHymns = [];
 let hymnLayouts = null;
 let hymnLayoutsPromise = null;
 let hymnTexts = {};
 let customHymns = loadCustomHymns();
 let hiddenHymns = loadHiddenHymns();
 let sharedSongs = loadSharedSongsCache();
+let originalFixes = loadOriginalFixesCache();
 let sharedSongsFromServer = false;
 let viewMode = readSetting(STORAGE_KEYS.viewMode, "texto");
 let fontScale = Number(readSetting(STORAGE_KEYS.fontScale, "1")) || 1;
@@ -137,7 +140,8 @@ const elements = {
   deleteCustomHymnButton: document.querySelector("#deleteCustomHymnButton"),
   catalogTools: document.querySelector("#catalogTools"),
   sendCustomHymnsButton: document.querySelector("#sendCustomHymnsButton"),
-  restoreHiddenButton: document.querySelector("#restoreHiddenButton")
+  restoreHiddenButton: document.querySelector("#restoreHiddenButton"),
+  sectionButtons: document.querySelector("#sectionButtons")
 };
 
 init();
@@ -158,7 +162,8 @@ async function init() {
       throw new Error("No se pudo leer el catálogo.");
     }
 
-    hymns = await hymnResponse.json();
+    originalHymns = await hymnResponse.json();
+    hymns = [...originalHymns];
     hymnTexts = await textResponse.json();
     await refreshSharedSongs({ timeoutMs: 4000 });
     mergeCustomHymnsIntoCatalog();
@@ -281,7 +286,12 @@ function wireEvents() {
     renderTransposedSheet();
   });
   elements.editHymnButton.addEventListener("click", () => {
-    if (currentHymn?.custom || currentHymn?.shared) openImporter(currentHymn.number);
+    if (currentHymn && (currentHymn.custom || getAdminPin())) openImporter(currentHymn.number);
+  });
+  elements.sectionButtons.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-section]");
+    if (!button) return;
+    markSection(button.dataset.section);
   });
 
   elements.openImporterButton.addEventListener("click", () => openImporter());
@@ -870,7 +880,8 @@ function transposeKey(key, shift, preferFlats) {
 function renderTransposedSheet() {
   if (!currentHymn) return;
 
-  const hasPdf = !currentHymn.custom && !currentHymn.shared;
+  // Si una original fue corregida, la página del PDF ya no coincide: solo se muestra el texto.
+  const hasPdf = !currentHymn.custom && !currentHymn.shared && !currentHymn.fixed;
   const usePdf = viewMode === "pdf" && hasPdf;
   elements.viewModeButton.classList.toggle("hidden", !hasPdf);
   elements.viewModeButton.textContent = usePdf ? "Texto" : "PDF";
@@ -923,7 +934,7 @@ function renderTextSheet() {
 }
 
 function getHymnText(hymn) {
-  if (hymn.custom || hymn.shared) return hymn.cho || "";
+  if (hymn.custom || hymn.shared || hymn.fixed) return hymn.cho || "";
   return hymnTexts[String(hymn.number)] || "";
 }
 
@@ -1260,7 +1271,13 @@ function persistCustomHymns() {
 }
 
 function mergeCustomHymnsIntoCatalog() {
-  hymns = hymns.filter((hymn) => !hymn.custom && !hymn.shared);
+  const fixes = new Map(originalFixes.map((fix) => [fix.number, fix]));
+  hymns = originalHymns.map((hymn) => {
+    const fix = fixes.get(hymn.number);
+    return fix
+      ? { ...hymn, title: fix.title, artist: fix.artist, originalKey: fix.originalKey, preferFlats: fix.preferFlats, cho: fix.cho, fixed: true }
+      : hymn;
+  });
   sharedSongs.forEach((hymn) => hymns.push({ ...hymn, shared: true }));
   customHymns.forEach((hymn) => hymns.push({ ...hymn, custom: true }));
 }
@@ -1271,6 +1288,15 @@ function loadSharedSongsCache() {
   try {
     const data = JSON.parse(localStorage.getItem(STORAGE_KEYS.sharedSongs) || "[]");
     return Array.isArray(data) ? data.filter((s) => s && s.number && s.cho) : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadOriginalFixesCache() {
+  try {
+    const data = JSON.parse(localStorage.getItem(STORAGE_KEYS.originalFixes) || "[]");
+    return Array.isArray(data) ? data.filter((f) => f && f.number && f.cho) : [];
   } catch {
     return [];
   }
@@ -1292,12 +1318,23 @@ async function refreshSharedSongs({ timeoutMs = 8000 } = {}) {
       preferFlats: Boolean(s.preferFlats),
       cho: String(s.cho || "")
     }));
-    const changed = JSON.stringify(songs) !== JSON.stringify(sharedSongs);
-    if (changed) applyNumberChanges(sharedSongs, songs);
+    const fixes = (Array.isArray(data.fixes) ? data.fixes : []).map((f) => ({
+      number: Number(f.number),
+      title: String(f.title || ""),
+      artist: String(f.artist || ""),
+      originalKey: String(f.originalKey || "C"),
+      preferFlats: Boolean(f.preferFlats),
+      cho: String(f.cho || "")
+    }));
+    const songsChanged = JSON.stringify(songs) !== JSON.stringify(sharedSongs);
+    const fixesChanged = JSON.stringify(fixes) !== JSON.stringify(originalFixes);
+    if (songsChanged) applyNumberChanges(sharedSongs, songs);
     sharedSongs = songs;
+    originalFixes = fixes;
     sharedSongsFromServer = true;
     writeSetting(STORAGE_KEYS.sharedSongs, JSON.stringify(songs));
-    return changed;
+    writeSetting(STORAGE_KEYS.originalFixes, JSON.stringify(fixes));
+    return songsChanged || fixesChanged;
   } catch (error) {
     console.warn("No se pudieron actualizar las alabanzas publicadas:", error);
     return false;
@@ -1354,6 +1391,9 @@ async function refreshSharedSongsAndRender() {
     } else {
       closeViewer();
     }
+  } else if (currentHymn && !currentHymn.custom && !elements.viewer.classList.contains("hidden")) {
+    const updated = hymns.find((h) => h.number === currentHymn.number && !h.custom && !h.shared);
+    if (updated && updated.cho !== currentHymn.cho) openViewer(updated.number, viewerContext);
   }
 }
 
@@ -1399,7 +1439,7 @@ function updateAdminUi() {
   }
   elements.adminButton.textContent = admin ? "Salir de administrador" : "Soy administrador";
   if (currentHymn) {
-    elements.editHymnButton.classList.toggle("hidden", !(currentHymn.custom || (currentHymn.shared && admin)));
+    elements.editHymnButton.classList.toggle("hidden", !(currentHymn.custom || admin));
   }
 }
 
@@ -1435,32 +1475,82 @@ function nextCustomNumber() {
 }
 
 function openImporter(editNumber = null) {
-  const editing = editNumber ? hymns.find((h) => h.number === editNumber && (h.custom || h.shared)) : null;
+  const editing = editNumber ? hymns.find((h) => h.number === editNumber) : null;
+  const kind = editing ? (editing.shared ? "shared" : editing.custom ? "custom" : "original") : null;
   importerState = {
     editingNumber: editing ? editNumber : null,
     editingId: editing?.shared ? editing.id : null,
-    editingKind: editing ? (editing.shared ? "shared" : "custom") : null,
+    editingKind: kind,
     previewShift: 0
   };
+  const forEveryone = kind === "shared" || kind === "original";
+  const eyebrow = elements.importerTitle.previousElementSibling;
+  if (eyebrow) eyebrow.textContent = editing ? "Editar alabanza" : "Nueva alabanza";
 
   elements.importerTitle.textContent = editing
-    ? (editing.shared ? `Corregir alabanza ${editing.number} (para todos)` : "Editar alabanza")
+    ? (forEveryone ? `Corregir alabanza ${editing.number} (para todos)` : "Editar alabanza")
     : "Agregar alabanza";
-  elements.saveLocalButton.classList.toggle("hidden", importerState.editingKind === "shared");
-  elements.publishButton.textContent = importerState.editingKind === "shared"
-    ? "Guardar cambios para todos"
-    : "Publicar para todos";
+  elements.saveLocalButton.classList.toggle("hidden", forEveryone);
+  elements.publishButton.textContent = forEveryone ? "Guardar cambios para todos" : "Publicar para todos";
   elements.importTitle.value = editing?.title || "";
   elements.importArtist.value = editing?.artist || "";
   elements.importKey.value = editing?.originalKey || "";
-  elements.importText.value = editing ? stripHeader(editing.cho) : "";
-  elements.deleteCustomHymnButton.classList.toggle("hidden", !editing);
+  // Al editar, las divisiones (Estrofa, Coro, Final…) se escriben en el texto para poder cambiarlas.
+  elements.importText.value = editing ? ChordPro.withSectionLabels(stripHeader(getHymnText(editing))) : "";
+  elements.deleteCustomHymnButton.textContent = kind === "original" ? "Volver a la original" : "Eliminar";
+  elements.deleteCustomHymnButton.classList.toggle("hidden", !editing || (kind === "original" && !editing.fixed));
   clearImportError();
   renderImportPreview();
 
   elements.importerModal.classList.remove("hidden");
   document.body.style.overflow = "hidden";
   (editing ? elements.importText : elements.importTitle).focus();
+}
+
+// Marca la parte donde está el cursor: Estrofa, Coro, Puente…
+// - Si el cursor está en una etiqueta (o en la primera línea justo debajo de una), la cambia.
+// - Si no, pone la etiqueta en la línea del cursor; si es a mitad de un bloque, lo parte en dos.
+// - "Quitar" borra la etiqueta de esa parte.
+const SECTION_LABEL_LINE = /^\s*(?:coro|puente|pre-?coro|precoro|intro|introducci[oó]n|final|estribillo|verso|estrofa|interludio|outro|instrumental|solo|tag|coda|nota)(?:\s*\d+)?\s*:?\s*(?:\(?x\s*\d+\)?)?\s*$/i;
+
+function markSection(label) {
+  const textarea = elements.importText;
+  const lines = textarea.value.replace(/\r/g, "").split("\n");
+  const caret = textarea.selectionStart ?? 0;
+  let row = textarea.value.slice(0, caret).split("\n").length - 1;
+
+  // En una línea vacía: se usa la siguiente línea con texto.
+  while (row < lines.length - 1 && !lines[row].trim()) row += 1;
+
+  let labelRow = -1;
+  if (SECTION_LABEL_LINE.test(lines[row] || "")) labelRow = row;
+  else if (row > 0 && SECTION_LABEL_LINE.test(lines[row - 1])) labelRow = row - 1;
+  else if (row > 1 && !lines[row - 1].trim() && SECTION_LABEL_LINE.test(lines[row - 2])) labelRow = row - 2;
+
+  let focusRow;
+  if (label === "") {
+    if (labelRow < 0) {
+      showToast("Pon el cursor en la etiqueta que quieres quitar.");
+      return;
+    }
+    lines.splice(labelRow, 1);
+    focusRow = labelRow;
+  } else if (labelRow >= 0) {
+    lines[labelRow] = label;
+    focusRow = labelRow;
+  } else {
+    const startsBlock = row === 0 || !lines[row - 1].trim();
+    const insert = startsBlock ? [label] : ["", label];
+    lines.splice(row, 0, ...insert);
+    focusRow = row + insert.length - 1;
+  }
+
+  textarea.value = lines.join("\n");
+  const position = lines.slice(0, focusRow).join("\n").length + (focusRow ? 1 : 0);
+  textarea.focus();
+  textarea.setSelectionRange(position, position + (lines[focusRow] || "").length);
+  clearImportError();
+  renderImportPreview();
 }
 
 function closeImporter() {
@@ -1570,6 +1660,21 @@ async function publishImportedHymn() {
   const payload = { title, artist, key: originalKey, flats: preferFlats, cho };
   const editingShared = importerState.editingKind === "shared";
 
+  if (importerState.editingKind === "original") {
+    const number = importerState.editingNumber;
+    elements.publishButton.disabled = true;
+    const saved = await callSharedApi("PUT", `/fixes/${number}`, payload);
+    elements.publishButton.disabled = false;
+    if (!saved?.fix) return;
+    await refreshSharedSongs();
+    mergeCustomHymnsIntoCatalog();
+    refreshCatalog();
+    closeImporter();
+    showToast("Corrección guardada. Les llegará a todos al abrir la app.");
+    openViewer(number, viewerContext);
+    return;
+  }
+
   elements.publishButton.disabled = true;
   const data = editingShared
     ? await callSharedApi("PUT", `/songs/${importerState.editingId}`, payload)
@@ -1623,6 +1728,18 @@ function saveImportedHymn() {
 
 async function deleteCustomHymn() {
   const number = importerState.editingNumber;
+  if (importerState.editingKind === "original") {
+    if (!confirm(`¿Quitar las correcciones de la alabanza ${number} y volver a como era originalmente? Cambia para todos.`)) return;
+    const data = await callSharedApi("DELETE", `/fixes/${number}`);
+    if (!data) return;
+    await refreshSharedSongs();
+    mergeCustomHymnsIntoCatalog();
+    refreshCatalog();
+    closeImporter();
+    showToast("Alabanza devuelta a la original.");
+    openViewer(number, viewerContext);
+    return;
+  }
   const hymn = hymns.find((h) => h.number === number && (h.custom || h.shared));
   if (!hymn) return;
 

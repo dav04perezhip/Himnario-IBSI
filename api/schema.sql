@@ -14,3 +14,4 @@ CREATE TABLE songs (
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL
 );
+-- Las correcciones de las originales (1–214) están en fixes.sql (esa tabla no se borra aquí).

@@ -1428,6 +1428,49 @@ main {
   grid-template-columns: auto 1fr 1fr;
 }
 
+.section-tools {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.section-tools-label {
+  color: var(--muted, #61706d);
+  font-size: 0.8rem;
+}
+
+.section-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.section-buttons button {
+  min-height: 2.1rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  background: var(--surface);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.section-buttons button:hover {
+  border-color: var(--chord-color);
+}
+
+.section-buttons .section-remove {
+  color: #9b3b2f;
+}
+
+/* Etiqueta sola (p. ej. "Coro" otra vez): aviso de que se repite esa parte. */
+.cs-stanza.cs-repeat .cs-section::after {
+  content: " (se repite)";
+  font-weight: 400;
+  opacity: 0.75;
+}
+
 .importer-actions .danger.hidden + .secondary-dark {
   grid-column: 1 / 3;
 }
