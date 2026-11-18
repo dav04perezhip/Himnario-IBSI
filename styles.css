@@ -1257,6 +1257,148 @@ main {
   left: 0;
 }
 
+/* ---------- Modo Consejos ---------- */
+.cs-line.has-tips:not(.chords-only) .cs-piece {
+  padding-top: calc(0.82em * 1.4 + var(--tip-rows, 1) * var(--tip-h, 22px));
+}
+
+.cs-line.has-tips:not(.chords-only) .cs-chord {
+  top: calc(var(--tip-rows, 1) * var(--tip-h, 22px));
+}
+
+.cs-tip {
+  position: absolute;
+  top: calc((var(--tip-rows, 1) - 1 - var(--tier, 0)) * var(--tip-h, 22px));
+  left: 0;
+  z-index: 1;
+  transform: translateX(var(--shift, 0px));
+  padding: 0.12rem 0.45rem;
+  border: 1px solid #d9b45a;
+  border-radius: 0.35rem;
+  color: #7a5a0c;
+  background: #fbf3dc;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cs-tip.cs-tip-encima {
+  border-color: #9cc7c0;
+  color: #0b5c55;
+  background: #e6f3f1;
+}
+
+.cs-tip.cs-tip-final {
+  border-color: #c9a3d6;
+  color: #6a2f80;
+  background: #f5ebf9;
+}
+
+.tip-sheet {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 60;
+  max-height: 70vh;
+  overflow: auto;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  border-radius: 1rem 1rem 0 0;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.tip-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.tip-sheet-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.tip-option {
+  margin: 0 0 0.65rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+}
+
+.tip-option strong {
+  display: block;
+  margin-bottom: 0.15rem;
+}
+
+.tip-option .tip-how {
+  display: inline-block;
+  margin: 0.15rem 0 0.35rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.35rem;
+  color: #075e6a;
+  background: #e3f0ee;
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: 700;
+}
+
+.tip-option p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.tip-kind {
+  margin-left: 0.35rem;
+  color: #8a6a12;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.mode-button[aria-pressed="true"] {
+  border-color: #d9b45a;
+  color: #7a5a0c;
+  background: #fbf3dc;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cs-tip {
+    border-color: #7a6223;
+    color: #f0d48a;
+    background: #2d2610;
+  }
+
+  .cs-tip.cs-tip-encima {
+    border-color: #2f6b63;
+    color: #9fe0d5;
+    background: #12302c;
+  }
+
+  .cs-tip.cs-tip-final {
+    border-color: #6b4479;
+    color: #e3b9f2;
+    background: #2a1833;
+  }
+
+  .tip-option .tip-how {
+    color: #9fe0d5;
+    background: #1d3532;
+  }
+
+  .mode-button[aria-pressed="true"] {
+    border-color: #7a6223;
+    color: #f0d48a;
+    background: #2d2610;
+  }
+}
+
 .cs-piece.cs-midword::after {
   content: "-";
   position: absolute;

@@ -1,5 +1,5 @@
 const MAX_LISTS = 5;
-const APP_VERSION = "3.10";
+const APP_VERSION = "3.11";
 const CUSTOM_HYMN_START = 1001;
 // Las 1–214 son las originales: no se pueden eliminar. De la 215 en adelante viven en
 // Cloudflare y solo un administrador las elimina (por completo, y las siguientes se recorren).
@@ -9,6 +9,8 @@ const OLD_HOSTS = ["dav04perezhip.github.io"];
 // Servicio en Cloudflare donde se guardan las alabanzas publicadas para todos (carpeta api/).
 const SHARED_API = "https://himnario-ibsi-api.hiptank-news.workers.dev";
 const SHARED_FIRST_NUMBER = 215;
+// Modo Consejos: por ahora solo se prueba en estas alabanzas.
+const TIPS_TEST_NUMBERS = [221];
 const ORIGINAL_LAST_NUMBER = 214;
 const FONT_SCALE_MIN = 0.6;
 const FONT_SCALE_MAX = 2.5;
@@ -27,7 +29,8 @@ const STORAGE_KEYS = {
   adminPin: "ibsi-admin-pin-v1",
   viewMode: "ibsi-view-mode-v1",
   fontScale: "ibsi-font-scale-v1",
-  pinchHint: "ibsi-pinch-hint-v1"
+  pinchHint: "ibsi-pinch-hint-v1",
+  tips: "ibsi-tips-v1"
 };
 
 const SHARP_NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -120,6 +123,7 @@ const elements = {
   fontSmaller: document.querySelector("#fontSmaller"),
   fontLarger: document.querySelector("#fontLarger"),
   viewModeButton: document.querySelector("#viewModeButton"),
+  tipsButton: document.querySelector("#tipsButton"),
   editHymnButton: document.querySelector("#editHymnButton"),
   openImporterButton: document.querySelector("#openImporterButton"),
   importerModal: document.querySelector("#importerModal"),
@@ -285,6 +289,7 @@ function wireEvents() {
     writeSetting(STORAGE_KEYS.viewMode, viewMode);
     renderTransposedSheet();
   });
+  elements.tipsButton.addEventListener("click", toggleTips);
   elements.editHymnButton.addEventListener("click", () => {
     if (currentHymn && (currentHymn.custom || getAdminPin())) openImporter(currentHymn.number);
   });
@@ -401,7 +406,7 @@ function wireEvents() {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       const body = elements.transposedSheet.querySelector(".chord-sheet-body");
-      if (body && !elements.viewer.classList.contains("hidden")) ChordPro.fitChords(body);
+      if (body && !elements.viewer.classList.contains("hidden")) layoutSheet(body);
       const preview = elements.importPreview.querySelector(".chord-sheet-body");
       if (preview && !elements.importerModal.classList.contains("hidden")) ChordPro.fitChords(preview);
     }, 120);
@@ -879,6 +884,7 @@ function transposeKey(key, shift, preferFlats) {
 
 function renderTransposedSheet() {
   if (!currentHymn) return;
+  closeTipSheet();
 
   // Si una original fue corregida, la página del PDF ya no coincide: solo se muestra el texto.
   const hasPdf = !currentHymn.custom && !currentHymn.shared && !currentHymn.fixed;
@@ -886,6 +892,8 @@ function renderTransposedSheet() {
   elements.viewModeButton.classList.toggle("hidden", !hasPdf);
   elements.viewModeButton.textContent = usePdf ? "Texto" : "PDF";
   elements.viewModeButton.setAttribute("aria-pressed", String(usePdf));
+  elements.tipsButton.classList.toggle("hidden", usePdf || !tipsAvailable());
+  elements.tipsButton.setAttribute("aria-pressed", String(tipsActive()));
   elements.viewModeButton.title = usePdf
     ? "Volver a la vista de texto con acordes arriba"
     : "Ver la página original del PDF";
@@ -931,6 +939,60 @@ function renderTextSheet() {
   );
   elements.transposedSheet.replaceChildren(header, body);
   ChordPro.fitChords(body);
+  if (tipsActive() && window.ChordTips) {
+    const key = transposeKey(currentHymn.originalKey, shift, currentHymn.preferFlats);
+    ChordTips.decorate(body, key, currentHymn.preferFlats, openTipSheet);
+  }
+}
+
+function layoutSheet(body) {
+  ChordPro.fitChords(body);
+  if (window.ChordTips) ChordTips.layout(body);
+}
+
+// ---------- Modo Consejos ----------
+
+function tipsAvailable() {
+  return Boolean(currentHymn && TIPS_TEST_NUMBERS.includes(currentHymn.number));
+}
+
+function tipsActive() {
+  return tipsAvailable() && readSetting(STORAGE_KEYS.tips, "0") === "1";
+}
+
+function toggleTips() {
+  writeSetting(STORAGE_KEYS.tips, tipsActive() ? "0" : "1");
+  closeTipSheet();
+  renderTransposedSheet();
+  if (tipsActive()) showToast("Toca una etiqueta para ver el consejo completo.");
+}
+
+function openTipSheet(tips, chordName) {
+  closeTipSheet();
+  const sheet = document.createElement("section");
+  sheet.className = "tip-sheet";
+  sheet.id = "tipSheet";
+  sheet.setAttribute("role", "dialog");
+  sheet.setAttribute("aria-label", `Consejos para ${chordName}`);
+  const kinds = { antes: "tócalo antes", "en lugar": "en lugar del acorde", encima: "encima del acorde", final: "para terminar" };
+  sheet.innerHTML = `
+    <div class="tip-sheet-head">
+      <h3>Ideas para ${escapeHtml(chordName)}</h3>
+      <button class="modal-close" type="button" aria-label="Cerrar">×</button>
+    </div>
+    ${tips.map((tip) => `
+      <div class="tip-option">
+        <strong>${escapeHtml(tip.title)}<span class="tip-kind">${escapeHtml(kinds[tip.kind] || "")}</span></strong>
+        <span class="tip-how">${escapeHtml(tip.how)}</span>
+        <p>${escapeHtml(tip.why)}</p>
+      </div>`).join("")}
+  `;
+  sheet.querySelector(".modal-close").addEventListener("click", closeTipSheet);
+  elements.viewer.appendChild(sheet);
+}
+
+function closeTipSheet() {
+  document.querySelector("#tipSheet")?.remove();
 }
 
 function getHymnText(hymn) {
@@ -997,7 +1059,7 @@ function endPinch() {
   applySheetScale(fontScale);
   updateFontButtons();
   const body = elements.transposedSheet.querySelector(".chord-sheet-body");
-  if (body) ChordPro.fitChords(body);
+  if (body) layoutSheet(body);
 }
 
 function applySheetScale(scale) {

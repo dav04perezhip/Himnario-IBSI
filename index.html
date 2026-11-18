@@ -18,16 +18,16 @@
   <meta name="twitter:title" content="Himnario IBSI">
   <meta name="twitter:description" content="Abre y guarda un listado compartido de alabanzas.">
 
-  <link rel="manifest" href="manifest.webmanifest?v=3.10">
+  <link rel="manifest" href="manifest.webmanifest?v=3.11">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
   <link rel="icon" href="assets/icons/icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=3.10">
+  <link rel="stylesheet" href="styles.css?v=3.11">
   <title>Himnario IBSI</title>
 </head>
 <body>
   <header class="app-header">
     <div>
-      <p class="eyebrow">Versión 3.10</p>
+      <p class="eyebrow">Versión 3.11</p>
       <h1>Himnario IBSI</h1>
     </div>
     <button id="installButton" class="secondary hidden" type="button">Instalar</button>
@@ -146,6 +146,7 @@
       <button id="fontSmaller" class="font-button" type="button" aria-label="Letra más pequeña" title="Letra más pequeña">A−</button>
       <button id="fontLarger" class="font-button" type="button" aria-label="Letra más grande" title="Letra más grande">A+</button>
       <button id="viewModeButton" class="mode-button" type="button" aria-pressed="false" title="Cambiar entre vista de texto y vista original del PDF">PDF</button>
+      <button id="tipsButton" class="mode-button hidden" type="button" aria-pressed="false" title="Ideas de armonía: acordes de paso, cadencias y escalas">Consejos</button>
       <button id="editHymnButton" class="mode-button hidden" type="button" title="Editar esta alabanza">Editar</button>
     </div>
 
@@ -258,7 +259,8 @@ Majestad, adora a su majestad"></textarea>
 
   <div id="toast" class="toast hidden" role="status"></div>
 
-  <script src="chordpro.js?v=3.10" defer></script>
-  <script src="app.js?v=3.10" defer></script>
+  <script src="chordpro.js?v=3.11" defer></script>
+  <script src="tips.js?v=3.11" defer></script>
+  <script src="app.js?v=3.11" defer></script>
 </body>
 </html>
