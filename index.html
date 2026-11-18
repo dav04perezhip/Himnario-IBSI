@@ -18,10 +18,10 @@
   <meta name="twitter:title" content="Himnario IBSI">
   <meta name="twitter:description" content="Abre y guarda un listado compartido de alabanzas.">
 
-  <link rel="manifest" href="manifest.webmanifest?v=3.12">
+  <link rel="manifest" href="manifest.webmanifest?v=3.13">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
   <link rel="icon" href="assets/icons/icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=3.12">
+  <link rel="stylesheet" href="styles.css?v=3.13">
   <script>
     // Tema elegido en Ajustes (se aplica antes de pintar para que no parpadee).
     try {
@@ -116,10 +116,31 @@
           </div>
         </div>
 
+        <div class="list-when">
+          <label class="field">
+            <span>Fecha</span>
+            <input id="setlistDate" type="date">
+          </label>
+          <label class="field">
+            <span>Hora</span>
+            <input id="setlistTime" type="time" step="900">
+          </label>
+        </div>
+
         <label class="field">
           <span>Nombre del listado</span>
-          <input id="setlistName" type="text" maxlength="80" placeholder="Ejemplo: Culto del sábado">
+          <input id="setlistName" type="text" maxlength="80" placeholder="Alabanzas Domingo">
         </label>
+        <p id="setlistNameHint" class="setting-note">El nombre se pone solo según la fecha. Si lo cambias, se queda el tuyo.</p>
+
+        <div class="list-search">
+          <label class="search-box">
+            <span class="sr-only">Buscar alabanza para agregar</span>
+            <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="listSearchInput" type="search" placeholder="Buscar alabanza para agregar" autocomplete="off">
+          </label>
+          <div id="listSearchResults" class="list-search-results hidden" aria-live="polite"></div>
+        </div>
 
         <p id="saveStatus" class="save-status">Guardado automáticamente en este dispositivo.</p>
 
@@ -170,7 +191,7 @@
         <h3>Acerca de</h3>
         <div class="setting-row">
           <div>
-            <strong class="eyebrow-version">Versión 3.12</strong>
+            <strong class="eyebrow-version">Versión 3.13</strong>
             <p>Las actualizaciones se instalan solas al abrir la app con internet.</p>
           </div>
           <span id="connectionState" class="status-pill">Comprobando conexión…</span>
@@ -315,8 +336,8 @@ Majestad, adora a su majestad"></textarea>
 
   <div id="toast" class="toast hidden" role="status"></div>
 
-  <script src="chordpro.js?v=3.12" defer></script>
-  <script src="tips.js?v=3.12" defer></script>
-  <script src="app.js?v=3.12" defer></script>
+  <script src="chordpro.js?v=3.13" defer></script>
+  <script src="tips.js?v=3.13" defer></script>
+  <script src="app.js?v=3.13" defer></script>
 </body>
 </html>

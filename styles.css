@@ -2082,6 +2082,126 @@ body {
 }
 
 
+/* --- Listados: fecha, hora y buscador --- */
+.list-when {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.list-when input,
+.field input[type="date"],
+.field input[type="time"] {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+  color-scheme: light dark;
+}
+
+#setlistNameHint {
+  margin: -0.1rem 0 0.8rem;
+  font-size: 0.8rem;
+}
+
+.saved-list-card .list-when-label {
+  margin-top: 0.15rem;
+  color: var(--primary-text);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.saved-list-card.past {
+  opacity: 0.7;
+}
+
+.list-search {
+  position: relative;
+  margin: 0.4rem 0 1rem;
+}
+
+.list-search-results {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.list-search-results.hidden {
+  display: none;
+}
+
+.list-search-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.45rem;
+  border: 0;
+  border-radius: 0.65rem;
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+}
+
+.list-search-row:hover:not(:disabled) {
+  background: var(--surface-soft);
+}
+
+.list-search-row:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.list-search-row .hymn-number {
+  width: 2.1rem;
+  height: 2.1rem;
+  font-size: 0.8rem;
+}
+
+.list-search-copy strong,
+.list-search-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-search-copy small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.list-search-add {
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  color: var(--on-primary);
+  background: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.list-search-row.added .list-search-add {
+  color: var(--primary-text);
+  background: var(--surface-soft);
+}
+
+.list-search-empty {
+  margin: 0.4rem;
+  color: var(--muted);
+}
+
 /* ---------- Tema oscuro elegido a mano (Ajustes → Tema) ---------- */
   :root[data-theme="dark"] {
     --background: #111817;

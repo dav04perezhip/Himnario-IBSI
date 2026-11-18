@@ -1,5 +1,5 @@
-const MAX_LISTS = 5;
-const APP_VERSION = "3.12";
+const MAX_LISTS = 40;
+const APP_VERSION = "3.13";
 const CUSTOM_HYMN_START = 1001;
 // Las 1–214 son las originales: no se pueden eliminar. De la 215 en adelante viven en
 // Cloudflare y solo un administrador las elimina (por completo, y las siguientes se recorren).
@@ -87,6 +87,11 @@ const elements = {
   emptySetlist: document.querySelector("#emptySetlist"),
   setlistCount: document.querySelector("#setlistCount"),
   setlistName: document.querySelector("#setlistName"),
+  setlistDate: document.querySelector("#setlistDate"),
+  setlistTime: document.querySelector("#setlistTime"),
+  setlistNameHint: document.querySelector("#setlistNameHint"),
+  listSearchInput: document.querySelector("#listSearchInput"),
+  listSearchResults: document.querySelector("#listSearchResults"),
   saveStatus: document.querySelector("#saveStatus"),
   clearSetlistButton: document.querySelector("#clearSetlistButton"),
   viewer: document.querySelector("#viewer"),
@@ -248,11 +253,23 @@ function wireEvents() {
   elements.deleteListButton.addEventListener("click", deleteActiveList);
   elements.shareListButton.addEventListener("click", shareActiveList);
 
+  elements.setlistDate.addEventListener("change", () => updateActiveListWhen());
+  elements.setlistTime.addEventListener("change", () => updateActiveListWhen());
+  elements.listSearchInput.addEventListener("input", renderListSearch);
+  elements.listSearchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      elements.listSearchInput.value = "";
+      renderListSearch();
+    }
+  });
+
   elements.setlistName.addEventListener("input", () => {
     const activeList = getActiveList();
     if (!activeList) return;
 
     activeList.name = elements.setlistName.value;
+    // Si escribe su propio nombre, ya no se cambia solo con la fecha.
+    activeList.autoName = !elements.setlistName.value.trim() || elements.setlistName.value === autoListName(activeList);
     activeList.updatedAt = Date.now();
     persistLists();
     elements.activeListTitle.textContent = displayListName(activeList);
@@ -266,7 +283,8 @@ function wireEvents() {
     if (!activeList) return;
 
     if (!activeList.name.trim()) {
-      activeList.name = "Listado sin nombre";
+      activeList.autoName = true;
+      activeList.name = autoListName(activeList);
       elements.setlistName.value = activeList.name;
       elements.activeListTitle.textContent = activeList.name;
       persistLists();
@@ -565,13 +583,16 @@ function renderSavedListsGrid() {
   elements.savedListsGrid.innerHTML = "";
   const fragment = document.createDocumentFragment();
 
-  savedLists.forEach((list) => {
+  sortedListsForDisplay().forEach((list) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `saved-list-card${list.id === activeListId ? " active" : ""}`;
+    const past = isPastList(list);
+    button.className = `saved-list-card${list.id === activeListId ? " active" : ""}${past ? " past" : ""}`;
+    const when = formatListWhen(list);
     button.innerHTML = `
       <span>
         <strong>${escapeHtml(displayListName(list))}</strong>
+        ${when ? `<small class="list-when-label">${escapeHtml(when)}${past ? " · ya pasó" : ""}</small>` : ""}
         <span>${list.hymns.length} alabanza${list.hymns.length === 1 ? "" : "s"}</span>
       </span>
       <span class="edit-indicator">${list.id === activeListId ? "Abierto" : "Editar"}</span>
@@ -595,7 +616,10 @@ function renderActiveList() {
   elements.activeListEditor.classList.remove("hidden");
   elements.activeListTitle.textContent = displayListName(activeList);
   elements.setlistName.value = activeList.name;
+  elements.setlistDate.value = activeList.date || "";
+  elements.setlistTime.value = activeList.time || "";
   elements.saveStatus.textContent = "Guardado automáticamente en este dispositivo.";
+  renderListSearch();
   elements.setlistItems.innerHTML = "";
   elements.emptySetlist.classList.toggle("hidden", activeList.hymns.length > 0);
   elements.clearSetlistButton.classList.toggle("hidden", activeList.hymns.length === 0);
@@ -643,16 +667,19 @@ function createNewList() {
     return;
   }
 
-  const newList = createListObject(nextListName(), []);
+  const newList = createListObject("", []);
+  newList.date = todayIso();
+  newList.time = "";
+  newList.autoName = true;
+  newList.name = autoListName(newList);
   savedLists.push(newList);
   activeListId = newList.id;
   persistLists();
   renderListManager();
   switchView("setlist");
 
-  elements.setlistName.focus();
-  elements.setlistName.select();
-  showToast("Nuevo listado creado.");
+  elements.setlistDate.focus();
+  showToast("Nuevo listado creado. Elige la fecha y la hora.");
 }
 
 function deleteActiveList() {
@@ -704,7 +731,9 @@ function addToActiveList(number) {
   activeList.hymns.push(number);
   activeList.updatedAt = Date.now();
   persistLists();
+  const searchHadFocus = document.activeElement === elements.listSearchInput;
   renderListManager();
+  if (searchHadFocus) elements.listSearchInput.focus();
   updateViewerAddButton();
   showToast(`Agregada a “${displayListName(activeList)}”.`);
 }
@@ -2208,7 +2237,9 @@ function buildSharedListUrl(list) {
   const payload = {
     v: 1,
     n: displayListName(list).slice(0, 80),
-    h: list.hymns
+    h: list.hymns,
+    ...(list.date ? { d: list.date } : {}),
+    ...(list.time ? { t: list.time } : {})
   };
   const encoded = encodeSharePayload(payload);
   return `${window.location.origin}${window.location.pathname}#list=${encoded}`;
@@ -2234,6 +2265,7 @@ function buildWhatsAppShareText(list) {
   return [
     "🎶 *Himnario IBSI*",
     `📋 *${displayListName(list)}*`,
+    ...(formatListWhen(list) ? [`📅 ${formatListWhen(list)}`] : []),
     "",
     ...lines,
     "",
@@ -2306,6 +2338,8 @@ function parseSharedListFromHash() {
       id: `shared-${Date.now()}`,
       name: String(payload.n || "Listado compartido").slice(0, 80),
       hymns: hymnNumbers,
+      date: validIsoDate(payload.d),
+      time: validTime(payload.t),
       shared: true
     };
   } catch (error) {
@@ -2326,7 +2360,7 @@ function renderSharedListModal() {
   elements.openSharedListButton.disabled = sharedList.hymns.length === 0;
   elements.saveSharedListButton.disabled = savedLists.length >= MAX_LISTS;
   elements.saveSharedListButton.textContent = savedLists.length >= MAX_LISTS
-    ? "Límite de 5 listados"
+    ? `Límite de ${MAX_LISTS} listados`
     : "Guardar en mis listados";
 
   const fragment = document.createDocumentFragment();
@@ -2379,7 +2413,7 @@ function importSharedList() {
   if (!sharedList) return;
 
   if (savedLists.length >= MAX_LISTS) {
-    showToast("Ya tienes 5 listados. Elimina uno para guardar este.");
+    showToast(`Ya tienes ${MAX_LISTS} listados. Elimina uno para guardar este.`);
     return;
   }
 
@@ -2387,6 +2421,9 @@ function importSharedList() {
     uniqueImportedListName(displayListName(sharedList)),
     sharedList.hymns
   );
+  imported.date = sharedList.date || "";
+  imported.time = sharedList.time || "";
+  imported.autoName = false;
 
   savedLists.push(imported);
   activeListId = imported.id;
@@ -2496,7 +2533,10 @@ function loadSavedLists() {
           ? [...new Set(list.hymns.filter(Number.isInteger))]
           : [],
         createdAt: Number(list.createdAt) || Date.now(),
-        updatedAt: Number(list.updatedAt) || Date.now()
+        updatedAt: Number(list.updatedAt) || Date.now(),
+        date: validIsoDate(list.date),
+        time: validTime(list.time),
+        autoName: Boolean(list.autoName)
       }));
 
       const shouldRemoveAutomaticEmptyList =
@@ -2578,6 +2618,133 @@ function nextListName() {
     }
   }
   return `Listado ${savedLists.length + 1}`;
+}
+
+// ---------- Fecha y hora de los listados ----------
+
+const WEEKDAYS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+const MONTHS_SHORT = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+function todayIso() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function validIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? String(value) : "";
+}
+
+function validTime(value) {
+  return /^\d{2}:\d{2}$/.test(String(value || "")) ? String(value) : "";
+}
+
+function listDateObject(list) {
+  if (!list?.date) return null;
+  const [year, month, day] = list.date.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatTime12(time) {
+  if (!time) return "";
+  const [hours, minutes] = time.split(":").map(Number);
+  const suffix = hours < 12 ? "a. m." : "p. m.";
+  const hour12 = hours % 12 || 12;
+  return `${hour12}:${String(minutes).padStart(2, "0")} ${suffix}`;
+}
+
+// "Alabanzas Domingo" (el día sale de la fecha elegida).
+function autoListName(list) {
+  const date = listDateObject(list);
+  return date ? `Alabanzas ${WEEKDAYS[date.getDay()]}` : "Alabanzas";
+}
+
+// "Dom 23 nov 2026 · 10:00 a. m." — se muestra en pequeño debajo del nombre.
+function formatListWhen(list) {
+  const date = listDateObject(list);
+  const parts = [];
+  if (date) {
+    const sameYear = date.getFullYear() === new Date().getFullYear();
+    parts.push(`${WEEKDAYS[date.getDay()].slice(0, 3)} ${date.getDate()} ${MONTHS_SHORT[date.getMonth()]}${sameYear ? "" : ` ${date.getFullYear()}`}`);
+  }
+  if (list?.time) parts.push(formatTime12(list.time));
+  return parts.join(" · ");
+}
+
+function isPastList(list) {
+  return Boolean(list.date) && list.date < todayIso();
+}
+
+// Primero los próximos servicios (por fecha y hora), luego los que no tienen fecha y al final los pasados.
+function sortedListsForDisplay() {
+  const rank = (list) => (!list.date ? 1 : isPastList(list) ? 2 : 0);
+  return [...savedLists].sort((a, b) => {
+    const byRank = rank(a) - rank(b);
+    if (byRank) return byRank;
+    const keyA = `${a.date || ""} ${a.time || "99:99"}`;
+    const keyB = `${b.date || ""} ${b.time || "99:99"}`;
+    return rank(a) === 2 ? keyB.localeCompare(keyA) : keyA.localeCompare(keyB);
+  });
+}
+
+function updateActiveListWhen() {
+  const activeList = getActiveList();
+  if (!activeList) return;
+  activeList.date = validIsoDate(elements.setlistDate.value);
+  activeList.time = validTime(elements.setlistTime.value);
+  if (activeList.autoName) {
+    activeList.name = autoListName(activeList);
+    elements.setlistName.value = activeList.name;
+  }
+  activeList.updatedAt = Date.now();
+  persistLists();
+  elements.activeListTitle.textContent = displayListName(activeList);
+  elements.saveStatus.textContent = "Cambios guardados automáticamente.";
+  renderSavedListsGrid();
+  updateViewerAddButton();
+}
+
+// ---------- Buscar y agregar alabanzas desde el listado ----------
+
+function renderListSearch() {
+  const list = getActiveList();
+  const query = normalize(elements.listSearchInput.value.trim());
+  const box = elements.listSearchResults;
+  if (!list || !query) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  const matches = hymns.filter((hymn) =>
+    String(hymn.number).startsWith(query) ||
+    normalize(hymn.title).includes(query) ||
+    normalize(hymn.artist || "").includes(query)
+  ).slice(0, 8);
+
+  box.classList.remove("hidden");
+  if (!matches.length) {
+    box.innerHTML = '<p class="list-search-empty">No se encontraron alabanzas.</p>';
+    return;
+  }
+  box.innerHTML = "";
+  matches.forEach((hymn) => {
+    const added = list.hymns.includes(hymn.number);
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `list-search-row${added ? " added" : ""}`;
+    row.disabled = added;
+    row.innerHTML = `
+      <span class="hymn-number">${hymn.custom ? "P" : hymn.number}</span>
+      <span class="list-search-copy">
+        <strong>${escapeHtml(hymn.title)}</strong>
+        ${hymn.artist ? `<small>${escapeHtml(hymn.artist)}</small>` : ""}
+      </span>
+      <span class="list-search-add">${added ? "✓ En el listado" : "+ Agregar"}</span>
+    `;
+    row.addEventListener("click", () => {
+      addToActiveList(hymn.number);
+    });
+    box.appendChild(row);
+  });
 }
 
 function displayListName(list) {
