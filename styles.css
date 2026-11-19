@@ -3127,6 +3127,60 @@ body.live-on .page-viewport {
   }
 }
 
+
+/* --- v3.15: en el visor, el estado en vivo va arriba a la derecha (no tapa la letra) --- */
+.viewer-toolbar > #viewerAddButton,
+.viewer-toolbar > .live-chip {
+  grid-row: 1;
+  grid-column: 3;
+}
+
+.live-chip {
+  display: none;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.3rem;
+  padding: 0.3rem 0.75rem;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: #c62f2f;
+  font-size: 0.85rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.live-chip .live-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+.live-chip.offline {
+  background: #7a6420;
+}
+
+.live-chip.offline .live-dot {
+  animation: none;
+  opacity: 0.6;
+}
+
+body.live-on .live-chip {
+  display: inline-flex;
+}
+
+body.live-on .viewer-toolbar > #viewerAddButton {
+  display: none;
+}
+
+/* Con una alabanza abierta no hace falta la barra de abajo. */
+body.viewer-open .live-bar {
+  display: none;
+}
+
+body.live-on .page-viewport {
+  padding-bottom: 0;
+}
+
 /* ---------- Tema oscuro elegido a mano (Ajustes → Tema) ---------- */
   :root[data-theme="dark"] {
     --background: #111817;

@@ -1,5 +1,5 @@
 const MAX_LISTS = 40;
-const APP_VERSION = "3.14";
+const APP_VERSION = "3.15";
 const CUSTOM_HYMN_START = 1001;
 // Las 1–214 son las originales: no se pueden eliminar. De la 215 en adelante viven en
 // Cloudflare y solo un administrador las elimina (por completo, y las siguientes se recorren).
@@ -191,7 +191,9 @@ const elements = {
   liveBar: document.querySelector("#liveBar"),
   liveBarText: document.querySelector("#liveBarText"),
   liveBarAction: document.querySelector("#liveBarAction"),
-  liveBarStop: document.querySelector("#liveBarStop")
+  liveBarStop: document.querySelector("#liveBarStop"),
+  viewerLiveChip: document.querySelector("#viewerLiveChip"),
+  viewerLiveChipText: document.querySelector("#viewerLiveChipText")
 };
 
 // ---------- Tono y notas de cada alabanza dentro de un listado ----------
@@ -777,6 +779,14 @@ function renderLiveUi() {
   elements.liveBar.classList.toggle("hidden", !active);
   elements.liveBar.classList.toggle("offline", active && session.status !== "online");
 
+  elements.viewerLiveChip.classList.toggle("offline", active && session.status !== "online");
+  if (active) {
+    // Versión corta para la esquina del visor: "29KE · 3 👥" o "29KE".
+    elements.viewerLiveChipText.textContent = session.status !== "online"
+      ? `${session.code} · …`
+      : session.role === "director" ? `${session.code} · ${session.listeners}` : session.code;
+    elements.viewerLiveChip.title = liveStatusText();
+  }
   if (active) {
     elements.liveBarText.textContent = liveStatusText();
     elements.liveBarAction.textContent = session.role === "director" ? "Invitar" : "Ver";
@@ -818,6 +828,36 @@ function liveCardPrimary() {
 function liveCardSecondary() {
   if (!liveSession) openJoinSheet();
   else confirmStopLive();
+}
+
+// Opciones del modo en vivo desde la esquina del visor.
+function openLiveMenu() {
+  if (!liveSession) return;
+  const director = liveSession.role === "director";
+  openSheet(director ? `Dirigiendo · ${liveSession.code}` : `En vivo · ${liveSession.code}`, (body) => {
+    const note = document.createElement("p");
+    note.className = "sheet-note";
+    note.textContent = liveSession.status !== "online"
+      ? "Reconectando… revisa tu internet."
+      : director
+        ? `${liveSession.listeners} músico${liveSession.listeners === 1 ? "" : "s"} conectado${liveSession.listeners === 1 ? "" : "s"}.`
+        : liveSession.state?.title ? `El director está en: ${liveSession.state.title}.` : "Esperando al director.";
+    body.appendChild(note);
+    if (director) {
+      body.append(
+        sheetAction("Invitar a los músicos", () => openLiveInvite(), { hint: "Código y enlace por WhatsApp" }),
+        sheetAction("Agregar esta alabanza a mi listado", () => { closeSheet(); elements.viewerAddButton.click(); }, {
+          disabled: !currentHymn || elements.viewerAddButton.disabled
+        }),
+        sheetAction("Terminar la sesión", () => { closeSheet(); confirmStopLive(); }, { danger: true })
+      );
+    } else {
+      body.append(
+        sheetAction("Volver a la del director", () => { closeSheet(); showLiveNow(); }),
+        sheetAction("Salir de la sesión", () => { closeSheet(); confirmStopLive(); }, { danger: true })
+      );
+    }
+  });
 }
 
 function confirmStopLive() {
@@ -1025,6 +1065,7 @@ function wireEvents() {
     else showLiveNow();
   });
   elements.liveBarStop.addEventListener("click", confirmStopLive);
+  elements.viewerLiveChip.addEventListener("click", openLiveMenu);
   elements.actionSheetClose.addEventListener("click", closeSheet);
   elements.actionSheet.addEventListener("click", (event) => {
     // El mismo toque que abrió la hoja no debe cerrarla (algunos teléfonos repiten el clic).

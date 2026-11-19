@@ -18,10 +18,10 @@
   <meta name="twitter:title" content="Himnario IBSI">
   <meta name="twitter:description" content="Abre y guarda un listado compartido de alabanzas.">
 
-  <link rel="manifest" href="manifest.webmanifest?v=3.14">
+  <link rel="manifest" href="manifest.webmanifest?v=3.15">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
   <link rel="icon" href="assets/icons/icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=3.14">
+  <link rel="stylesheet" href="styles.css?v=3.15">
   <script>
     // Tema elegido en Ajustes (se aplica antes de pintar para que no parpadee).
     try {
@@ -262,7 +262,7 @@
         <h3>Acerca de</h3>
         <div class="setting-row">
           <div>
-            <strong class="eyebrow-version">Versión 3.14</strong>
+            <strong class="eyebrow-version">Versión 3.15</strong>
             <p>Las actualizaciones se instalan solas al abrir la app con internet.</p>
           </div>
           <span id="connectionState" class="status-pill">Comprobando conexión…</span>
@@ -279,6 +279,10 @@
         <span id="viewerSubtitle"></span>
       </div>
       <button id="viewerAddButton" class="primary compact" type="button">Agregar</button>
+      <button id="viewerLiveChip" class="live-chip" type="button" aria-label="Sesión en vivo: opciones">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="viewerLiveChipText"></span>
+      </button>
     </div>
 
     <div id="transposeToolbar" class="transpose-toolbar" aria-label="Controles de transposición">
@@ -427,8 +431,8 @@ Majestad, adora a su majestad"></textarea>
 
   <div id="toast" class="toast hidden" role="status"></div>
 
-  <script src="chordpro.js?v=3.14" defer></script>
-  <script src="tips.js?v=3.14" defer></script>
-  <script src="app.js?v=3.14" defer></script>
+  <script src="chordpro.js?v=3.15" defer></script>
+  <script src="tips.js?v=3.15" defer></script>
+  <script src="app.js?v=3.15" defer></script>
 </body>
 </html>
