@@ -12,6 +12,11 @@
       "database_id": "ac95e739-f8b8-4baf-b5b4-30cd90cb187c"
     }
   ],
+  // Modo director: una "sala" por código de sesión (WebSockets en vivo).
+  "durable_objects": {
+    "bindings": [{ "name": "LIVE", "class_name": "LiveRoom" }]
+  },
+  "migrations": [{ "tag": "v1-live", "new_sqlite_classes": ["LiveRoom"] }],
   "vars": {
     // Las alabanzas nuevas siguen la numeración del himnario (las originales son 1–214).
     "FIRST_NUMBER": "215",

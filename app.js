@@ -1,5 +1,5 @@
 const MAX_LISTS = 40;
-const APP_VERSION = "3.13";
+const APP_VERSION = "3.14";
 const CUSTOM_HYMN_START = 1001;
 // Las 1–214 son las originales: no se pueden eliminar. De la 215 en adelante viven en
 // Cloudflare y solo un administrador las elimina (por completo, y las siguientes se recorren).
@@ -7,7 +7,11 @@ const CUSTOM_HYMN_START = 1001;
 const PUBLIC_URL = "https://himnario-ibsi.hiptank-news.workers.dev/";
 const OLD_HOSTS = ["dav04perezhip.github.io"];
 // Servicio en Cloudflare donde se guardan las alabanzas publicadas para todos (carpeta api/).
-const SHARED_API = "https://himnario-ibsi-api.hiptank-news.workers.dev";
+// Para pruebas en la computadora: http://localhost:8000/?api-local usa la API local (wrangler dev).
+const SHARED_API = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname) &&
+  new URLSearchParams(window.location.search).has("api-local")
+  ? "http://127.0.0.1:8787"
+  : "https://himnario-ibsi-api.hiptank-news.workers.dev";
 const SHARED_FIRST_NUMBER = 215;
 // Modo Consejos: por ahora solo se prueba en estas alabanzas.
 const TIPS_TEST_NUMBERS = [221];
@@ -31,7 +35,8 @@ const STORAGE_KEYS = {
   fontScale: "ibsi-font-scale-v1",
   pinchHint: "ibsi-pinch-hint-v1",
   tips: "ibsi-tips-v1",
-  theme: "ibsi-theme-v1"
+  theme: "ibsi-theme-v1",
+  live: "ibsi-live-v1"
 };
 
 const SHARP_NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -156,8 +161,761 @@ const elements = {
   customHymnsNote: document.querySelector("#customHymnsNote"),
   sendCustomHymnsButton: document.querySelector("#sendCustomHymnsButton"),
   restoreHiddenButton: document.querySelector("#restoreHiddenButton"),
-  sectionButtons: document.querySelector("#sectionButtons")
+  sectionButtons: document.querySelector("#sectionButtons"),
+  listsOverview: document.querySelector("#listsOverview"),
+  statLists: document.querySelector("#statLists"),
+  statUpcoming: document.querySelector("#statUpcoming"),
+  statHymns: document.querySelector("#statHymns"),
+  liveCard: document.querySelector("#liveCard"),
+  liveCardTitle: document.querySelector("#liveCardTitle"),
+  liveCardText: document.querySelector("#liveCardText"),
+  startLiveButton: document.querySelector("#startLiveButton"),
+  joinLiveButton: document.querySelector("#joinLiveButton"),
+  listsFilter: document.querySelector("#listsFilter"),
+  listsFilterEmpty: document.querySelector("#listsFilterEmpty"),
+  newListFab: document.querySelector("#newListFab"),
+  backToListsButton: document.querySelector("#backToListsButton"),
+  listMenuButton: document.querySelector("#listMenuButton"),
+  activeListWhen: document.querySelector("#activeListWhen"),
+  activeListNote: document.querySelector("#activeListNote"),
+  activeListCount: document.querySelector("#activeListCount"),
+  playListButton: document.querySelector("#playListButton"),
+  directListButton: document.querySelector("#directListButton"),
+  listDetails: document.querySelector("#listDetails"),
+  setlistNote: document.querySelector("#setlistNote"),
+  viewerNote: document.querySelector("#viewerNote"),
+  actionSheet: document.querySelector("#actionSheet"),
+  actionSheetTitle: document.querySelector("#actionSheetTitle"),
+  actionSheetBody: document.querySelector("#actionSheetBody"),
+  actionSheetClose: document.querySelector("#actionSheetClose"),
+  liveBar: document.querySelector("#liveBar"),
+  liveBarText: document.querySelector("#liveBarText"),
+  liveBarAction: document.querySelector("#liveBarAction"),
+  liveBarStop: document.querySelector("#liveBarStop")
 };
+
+// ---------- Tono y notas de cada alabanza dentro de un listado ----------
+
+function sanitizeListKeys(raw, numbers) {
+  const keys = {};
+  if (!raw || typeof raw !== "object") return keys;
+  numbers.forEach((number) => {
+    const value = Number(raw[number]);
+    if (Number.isInteger(value) && value >= -11 && value <= 11) keys[number] = value;
+  });
+  return keys;
+}
+
+function sanitizeListNotes(raw, numbers) {
+  const notes = {};
+  if (!raw || typeof raw !== "object") return notes;
+  numbers.forEach((number) => {
+    const text = String(raw[number] ?? "").trim().slice(0, 200);
+    if (text) notes[number] = text;
+  });
+  return notes;
+}
+
+// Tono de una alabanza en un listado: el que se eligió para ese servicio o, si no, el de siempre.
+function listShift(list, number) {
+  const value = list?.keys?.[number];
+  return Number.isInteger(value) ? value : getTranspose(number);
+}
+
+function currentShift(number = currentHymn?.number) {
+  if (number == null) return 0;
+  const list = getViewerList();
+  return list ? listShift(list, number) : getTranspose(number);
+}
+
+function hymnKeyLabel(hymn, shift) {
+  return transposeKey(hymn.originalKey, shift, hymn.preferFlats);
+}
+
+function currentHymnNote() {
+  if (!currentHymn) return "";
+  const list = getViewerList();
+  return list?.notes?.[currentHymn.number] || "";
+}
+
+function updateViewerNote() {
+  const note = currentHymnNote();
+  elements.viewerNote.textContent = note;
+  elements.viewerNote.classList.toggle("hidden", !note);
+}
+
+// ---------- Hoja de opciones (abre desde abajo) ----------
+
+let sheetOpenedAt = 0;
+
+function openSheet(title, build) {
+  sheetOpenedAt = Date.now();
+  elements.actionSheetTitle.textContent = title;
+  elements.actionSheetBody.replaceChildren();
+  build(elements.actionSheetBody);
+  elements.actionSheet.classList.remove("hidden");
+  const focusable = elements.actionSheetBody.querySelector("input, textarea, button:not(:disabled)");
+  if (focusable && focusable.matches("input, textarea")) setTimeout(() => focusable.focus(), 60);
+}
+
+function closeSheet() {
+  elements.actionSheet.classList.add("hidden");
+  elements.actionSheetBody.replaceChildren();
+}
+
+function isSheetOpen() {
+  return !elements.actionSheet.classList.contains("hidden");
+}
+
+function sheetAction(label, onClick, { danger = false, disabled = false, hint = "" } = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `sheet-action${danger ? " danger-text" : ""}`;
+  button.disabled = disabled;
+  button.innerHTML = `<span>${escapeHtml(label)}</span>${hint ? `<small>${escapeHtml(hint)}</small>` : ""}`;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+// ---------- Pantallas de Listados ----------
+
+let listDetailOpen = false;
+let listFilter = "upcoming";
+
+function openListDetail(listId, { expandDetails = false } = {}) {
+  if (!savedLists.some((list) => list.id === listId)) return;
+  activeListId = listId;
+  listDetailOpen = true;
+  persistLists();
+  elements.listSearchInput.value = "";
+  elements.listDetails.open = expandDetails;
+  renderListManager();
+  updateViewerAddButton();
+  window.scrollTo({ top: 0 });
+}
+
+function closeListDetail() {
+  listDetailOpen = false;
+  renderListManager();
+  window.scrollTo({ top: 0 });
+}
+
+function renderListStats() {
+  const upcoming = savedLists.filter((list) => list.date && !isPastList(list)).length;
+  const allHymns = new Set(savedLists.flatMap((list) => list.hymns));
+  elements.statLists.textContent = String(savedLists.length);
+  elements.statUpcoming.textContent = String(upcoming);
+  elements.statHymns.textContent = String(allHymns.size);
+}
+
+function listCardTile(list) {
+  const date = listDateObject(list);
+  if (!date) return '<span class="date-tile no-date" aria-hidden="true">♫</span>';
+  return `
+    <span class="date-tile" aria-hidden="true">
+      <small>${WEEKDAYS[date.getDay()].slice(0, 3)}</small>
+      <strong>${date.getDate()}</strong>
+      <small>${MONTHS_SHORT[date.getMonth()]}</small>
+    </span>`;
+}
+
+function openListMenu() {
+  const list = getActiveList();
+  if (!list) return;
+  openSheet(displayListName(list), (body) => {
+    body.append(
+      sheetAction("Compartir por WhatsApp", () => { closeSheet(); shareActiveList(); }, { disabled: !list.hymns.length }),
+      sheetAction(liveSession?.role === "director" ? "Dirigir este listado (ya estás dirigiendo)" : "Dirigir este listado", () => {
+        closeSheet();
+        directActiveList();
+      }),
+      sheetAction("Datos del servicio", () => {
+        closeSheet();
+        elements.listDetails.open = true;
+        elements.listDetails.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, { hint: "Fecha, hora, nombre y nota" }),
+      sheetAction("Vaciar listado", () => { closeSheet(); elements.clearSetlistButton.click(); }, { danger: true, disabled: !list.hymns.length }),
+      sheetAction("Eliminar listado", () => { closeSheet(); deleteActiveList(); }, { danger: true })
+    );
+  });
+}
+
+function openRowMenu(number) {
+  const list = getActiveList();
+  const hymn = hymns.find((item) => item.number === number);
+  if (!list || !hymn) return;
+  const index = list.hymns.indexOf(number);
+  const key = hymnKeyLabel(hymn, listShift(list, number));
+  openSheet(`${index + 1}. ${hymn.title}`, (body) => {
+    body.append(
+      sheetAction("Ver alabanza", () => { closeSheet(); openViewer(number, { source: "setlist", listId: list.id }); }),
+      sheetAction(`Cambiar tono (${key})`, () => openKeySheet(number)),
+      sheetAction(list.notes?.[number] ? "Editar nota" : "Agregar nota", () => openNoteSheet(number), {
+        hint: list.notes?.[number] || "Ej.: entra solo el piano, coro 2 veces"
+      }),
+      sheetAction("Subir", () => { moveActiveListItem(index, -1); closeSheet(); }, { disabled: index === 0 }),
+      sheetAction("Bajar", () => { moveActiveListItem(index, 1); closeSheet(); }, { disabled: index === list.hymns.length - 1 }),
+      sheetAction("Quitar del listado", () => { closeSheet(); removeFromActiveList(number); }, { danger: true })
+    );
+  });
+}
+
+function openKeySheet(number) {
+  const list = getActiveList();
+  const hymn = hymns.find((item) => item.number === number);
+  if (!list || !hymn) return;
+
+  openSheet(`Tono para este servicio · ${hymn.title}`, (body) => {
+    const intro = document.createElement("p");
+    intro.className = "sheet-note";
+    intro.textContent = `Original: ${hymn.originalKey}. Este tono solo se usa en “${displayListName(list)}”.`;
+    const grid = document.createElement("div");
+    grid.className = "key-grid";
+    const current = listShift(list, number);
+    for (let shift = -5; shift <= 6; shift += 1) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `key-choice${shift === current ? " active" : ""}${shift === 0 ? " original" : ""}`;
+      button.innerHTML = `<strong>${escapeHtml(hymnKeyLabel(hymn, shift))}</strong><small>${shift === 0 ? "original" : formatTransposeAmount(shift)}</small>`;
+      button.addEventListener("click", () => {
+        list.keys = { ...(list.keys || {}), [number]: shift };
+        list.updatedAt = Date.now();
+        persistLists();
+        renderActiveList();
+        if (currentHymn?.number === number) liveBroadcast();
+        closeSheet();
+        showToast(`Tono ${hymnKeyLabel(hymn, shift)} para este listado.`);
+      });
+      grid.appendChild(button);
+    }
+    body.append(intro, grid);
+  });
+}
+
+function openNoteSheet(number) {
+  const list = getActiveList();
+  const hymn = hymns.find((item) => item.number === number);
+  if (!list || !hymn) return;
+
+  openSheet(`Nota · ${hymn.title}`, (body) => {
+    const textarea = document.createElement("textarea");
+    textarea.className = "sheet-textarea";
+    textarea.maxLength = 200;
+    textarea.rows = 3;
+    textarea.placeholder = "Ej.: Empieza solo el piano. Repetir el coro al final.";
+    textarea.value = list.notes?.[number] || "";
+    const save = (text) => {
+      const notes = { ...(list.notes || {}) };
+      if (text) notes[number] = text;
+      else delete notes[number];
+      list.notes = notes;
+      list.updatedAt = Date.now();
+      persistLists();
+      renderActiveList();
+      closeSheet();
+    };
+    const actions = document.createElement("div");
+    actions.className = "sheet-buttons";
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.className = "primary";
+    saveButton.textContent = "Guardar nota";
+    saveButton.addEventListener("click", () => save(textarea.value.trim().slice(0, 200)));
+    actions.appendChild(saveButton);
+    if (list.notes?.[number]) {
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "danger";
+      removeButton.textContent = "Borrar nota";
+      removeButton.addEventListener("click", () => save(""));
+      actions.appendChild(removeButton);
+    }
+    body.append(textarea, actions);
+  });
+}
+
+function playActiveList() {
+  const list = getActiveList();
+  if (!list?.hymns.length) {
+    showToast("Agrega alabanzas primero.");
+    return;
+  }
+  openViewer(list.hymns[0], { source: "setlist", listId: list.id });
+}
+
+async function directActiveList() {
+  const list = getActiveList();
+  if (!liveSession || liveSession.role !== "director") {
+    const started = await startLive();
+    if (!started) return;
+  }
+  if (list?.hymns.length) openViewer(list.hymns[0], { source: "setlist", listId: list.id });
+  openLiveInvite();
+}
+
+// ---------- Modo director (en vivo) ----------
+
+const LIVE_WS_BASE = SHARED_API.replace(/^http/, "ws");
+const LIVE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+let liveSession = null;
+let liveBroadcastTimer = null;
+
+function liveLink(code) {
+  return `${PUBLIC_URL}#vivo=${code}`;
+}
+
+function saveLiveSession() {
+  try {
+    if (!liveSession) {
+      localStorage.removeItem(STORAGE_KEYS.live);
+      return;
+    }
+    const { role, code, token } = liveSession;
+    localStorage.setItem(STORAGE_KEYS.live, JSON.stringify({ role, code, token: token || "", at: Date.now() }));
+  } catch { /* sin almacenamiento: la sesión sigue mientras la app esté abierta */ }
+}
+
+function restoreLiveSession() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.live) || "null");
+    if (!saved?.code || Date.now() - Number(saved.at) > LIVE_MAX_AGE_MS) {
+      localStorage.removeItem(STORAGE_KEYS.live);
+      return;
+    }
+    liveSession = newLiveSession(saved.role === "director" ? "director" : "follower", saved.code, saved.token);
+    connectLive();
+    renderLiveUi();
+  } catch {
+    localStorage.removeItem(STORAGE_KEYS.live);
+  }
+}
+
+function newLiveSession(role, code, token = "") {
+  return { role, code, token, ws: null, state: null, listeners: 0, status: "connecting", retries: 0, ended: false };
+}
+
+async function startLive() {
+  if (liveSession?.role === "director") return true;
+  if (!navigator.onLine) {
+    showToast("Necesitas internet para el modo director.");
+    return false;
+  }
+  try {
+    const response = await fetch(`${SHARED_API}/live`, { method: "POST" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const { code, token } = await response.json();
+    if (liveSession) stopLive({ silent: true });
+    liveSession = newLiveSession("director", code, token);
+    saveLiveSession();
+    connectLive();
+    renderLiveUi();
+    return true;
+  } catch (error) {
+    console.warn(error);
+    showToast("No se pudo iniciar el modo director. Revisa tu internet.");
+    return false;
+  }
+}
+
+async function joinLive(rawCode) {
+  const code = String(rawCode || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (code.length < 4) {
+    showToast("Escribe el código de 4 letras que te dio el director.");
+    return false;
+  }
+  if (liveSession?.code === code) return true;
+  try {
+    const response = await fetch(`${SHARED_API}/live/${code}`, { cache: "no-store" });
+    if (response.status === 404) {
+      showToast("Ese código no existe o la sesión ya terminó.");
+      return false;
+    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  } catch (error) {
+    console.warn(error);
+    showToast("No se pudo conectar. Revisa tu internet.");
+    return false;
+  }
+  if (liveSession) stopLive({ silent: true });
+  liveSession = newLiveSession("follower", code);
+  saveLiveSession();
+  connectLive();
+  renderLiveUi();
+  showToast(`Conectado a la sesión ${code}. Las alabanzas cambiarán solas.`);
+  return true;
+}
+
+function connectLive() {
+  const session = liveSession;
+  if (!session) return;
+  clearTimeout(session.retryTimer);
+  clearInterval(session.pingTimer);
+  if (session.ws) {
+    try { session.ws.close(); } catch { /* ya cerrada */ }
+  }
+
+  const query = session.role === "director" ? `?token=${encodeURIComponent(session.token)}` : "";
+  let ws;
+  try {
+    ws = new WebSocket(`${LIVE_WS_BASE}/live/${session.code}/ws${query}`);
+  } catch {
+    scheduleLiveReconnect(session);
+    return;
+  }
+  session.ws = ws;
+  session.status = "connecting";
+  renderLiveUi();
+
+  ws.addEventListener("open", () => {
+    if (liveSession !== session || session.ws !== ws) return;
+    session.status = "online";
+    session.retries = 0;
+    session.pingTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.send("ping");
+    }, 25000);
+    renderLiveUi();
+    if (session.role === "director") liveBroadcast(true);
+  });
+
+  ws.addEventListener("message", (event) => {
+    if (liveSession !== session || event.data === "pong") return;
+    let data;
+    try { data = JSON.parse(event.data); } catch { return; }
+    handleLiveMessage(data);
+  });
+
+  ws.addEventListener("close", () => {
+    if (liveSession !== session || session.ws !== ws) return;
+    clearInterval(session.pingTimer);
+    if (session.ended) return;
+    session.status = "offline";
+    renderLiveUi();
+    scheduleLiveReconnect(session);
+  });
+}
+
+function scheduleLiveReconnect(session) {
+  const delay = Math.min(15000, 1000 * 2 ** session.retries);
+  session.retries += 1;
+  session.retryTimer = setTimeout(async () => {
+    if (liveSession !== session) return;
+    if (session.retries > 2) {
+      // Después de varios intentos, ver si la sesión todavía existe.
+      try {
+        const response = await fetch(`${SHARED_API}/live/${session.code}`, { cache: "no-store" });
+        if (response.status === 404) {
+          endLiveLocally("La sesión en vivo terminó.");
+          return;
+        }
+      } catch { /* sin internet: seguir intentando */ }
+    }
+    if (liveSession === session) connectLive();
+  }, delay);
+}
+
+function reconnectLiveIfNeeded() {
+  if (!liveSession || liveSession.ended) return;
+  const ws = liveSession.ws;
+  if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+    liveSession.retries = 0;
+    connectLive();
+  }
+}
+
+function handleLiveMessage(data) {
+  if (!liveSession) return;
+  if (data.type === "hello") {
+    liveSession.listeners = Number(data.listeners) || 0;
+    if (liveSession.role === "director" && data.role !== "director") {
+      // El código ya no es nuestro (por ejemplo, venció): se termina.
+      endLiveLocally("La sesión que dirigías ya no existe.");
+      return;
+    }
+    if (liveSession.role === "follower" && data.state) applyLiveState(data.state);
+    renderLiveUi();
+  } else if (data.type === "count") {
+    liveSession.listeners = Number(data.listeners) || 0;
+    renderLiveUi();
+  } else if (data.type === "state" && liveSession.role === "follower") {
+    applyLiveState(data.state);
+  } else if (data.type === "ended") {
+    endLiveLocally(liveSession.role === "follower" ? "El director terminó la sesión." : "Sesión terminada.");
+  }
+}
+
+// Lista "virtual" con la que se mueve el músico: la del director, con sus tonos.
+function liveViewerList() {
+  const state = liveSession?.state;
+  if (!state) return null;
+  const available = new Set(hymns.map((hymn) => hymn.number));
+  const source = state.list?.hymns?.length ? state.list.hymns : [state.hymn].filter(Boolean);
+  const keys = { ...(state.list?.keys || {}) };
+  if (state.hymn) keys[state.hymn] = state.shift;
+  Object.assign(keys, liveSession.localKeys || {});
+  const notes = state.hymn && state.note ? { [state.hymn]: state.note } : {};
+  return {
+    id: "live",
+    name: state.list?.name || "En vivo",
+    hymns: source.filter((number) => available.has(number)),
+    keys,
+    notes
+  };
+}
+
+function applyLiveState(state) {
+  if (!liveSession || !state) return;
+  const sameUpdate = liveSession.state?.seq === state.seq && liveSession.state?.at === state.at;
+  liveSession.state = state;
+  if (!sameUpdate) liveSession.localKeys = {};
+  renderLiveUi();
+  if (!state.hymn || !hymns.length) return;
+
+  const hymn = hymns.find((item) => item.number === state.hymn);
+  if (!hymn) {
+    showToast(`El director abrió “${state.title || state.hymn}”, que no está en este teléfono.`);
+    return;
+  }
+  const viewerOpen = !elements.viewer.classList.contains("hidden");
+  if (sameUpdate && viewerOpen && currentHymn?.number === state.hymn) return;
+  if (!elements.importerModal.classList.contains("hidden")) return; // no interrumpir si está escribiendo
+  if (!elements.sharedListModal.classList.contains("hidden")) closeSharedListModal(false);
+  if (isSheetOpen()) closeSheet();
+  const sameHymn = viewerOpen && currentHymn?.number === state.hymn && viewerContext.source === "live";
+  if (sameHymn) {
+    // Mismo canto, otro tono: se vuelve a dibujar sin perder dónde iba.
+    updateTransposeDisplay();
+    renderTransposedSheet();
+    updateViewerNote();
+    updateSetlistNavigation();
+  } else {
+    openViewer(state.hymn, { source: "live", listId: "live" });
+  }
+}
+
+function buildLiveState() {
+  if (!currentHymn) return null;
+  const list = getViewerList();
+  const number = currentHymn.number;
+  return {
+    hymn: number,
+    shift: currentShift(number),
+    title: currentHymn.title,
+    note: list?.notes?.[number] || "",
+    list: list && list.hymns.length
+      ? {
+          name: displayListName(list),
+          hymns: list.hymns,
+          keys: Object.fromEntries(list.hymns.map((n) => [n, listShift(list, n)]))
+        }
+      : null
+  };
+}
+
+function liveBroadcast(immediate = false) {
+  if (liveSession?.role !== "director") return;
+  clearTimeout(liveBroadcastTimer);
+  const send = () => {
+    const ws = liveSession?.ws;
+    const state = buildLiveState();
+    if (!state || !ws || ws.readyState !== WebSocket.OPEN) return; // se envía al reconectar
+    ws.send(JSON.stringify({ type: "state", state }));
+    liveSession.lastSent = state;
+  };
+  if (immediate) send();
+  else liveBroadcastTimer = setTimeout(send, 120);
+}
+
+function stopLive({ silent = false } = {}) {
+  const session = liveSession;
+  if (!session) return;
+  session.ended = true;
+  if (session.role === "director" && session.ws?.readyState === WebSocket.OPEN) {
+    session.ws.send(JSON.stringify({ type: "end" }));
+  }
+  teardownLive(session);
+  if (!silent) showToast(session.role === "director" ? "Terminaste la sesión en vivo." : "Saliste de la sesión en vivo.");
+}
+
+function endLiveLocally(message) {
+  const session = liveSession;
+  if (!session) return;
+  session.ended = true;
+  teardownLive(session);
+  if (message) showToast(message);
+}
+
+function teardownLive(session) {
+  clearTimeout(session.retryTimer);
+  clearInterval(session.pingTimer);
+  clearTimeout(liveBroadcastTimer);
+  try { session.ws?.close(1000); } catch { /* ya cerrada */ }
+  if (liveSession === session) liveSession = null;
+  saveLiveSession();
+  if (viewerContext.source === "live") {
+    viewerContext = { source: "catalog", listId: null };
+    updateSetlistNavigation();
+    updateViewerNote();
+  }
+  closeSheet();
+  renderLiveUi();
+}
+
+function liveStatusText() {
+  if (!liveSession) return "";
+  const { role, code, status, listeners, state } = liveSession;
+  if (status !== "online") return `Reconectando… ${code}`;
+  if (role === "director") {
+    return `${code} · ${listeners} conectado${listeners === 1 ? "" : "s"}`;
+  }
+  return state?.title ? `${code} · ${state.title}` : `${code} · esperando al director`;
+}
+
+function renderLiveUi() {
+  const session = liveSession;
+  const active = Boolean(session);
+  document.body.classList.toggle("live-on", active);
+  elements.liveBar.classList.toggle("hidden", !active);
+  elements.liveBar.classList.toggle("offline", active && session.status !== "online");
+
+  if (active) {
+    elements.liveBarText.textContent = liveStatusText();
+    elements.liveBarAction.textContent = session.role === "director" ? "Invitar" : "Ver";
+    elements.liveBarStop.textContent = session.role === "director" ? "Terminar" : "Salir";
+  }
+
+  if (!active) {
+    elements.liveCardTitle.textContent = "Modo director";
+    elements.liveCardText.textContent = "Tú cambias la alabanza y el tono, y a todos los músicos les cambia al mismo tiempo.";
+    elements.startLiveButton.textContent = "Dirigir";
+    elements.joinLiveButton.textContent = "Unirme con código";
+  } else if (session.role === "director") {
+    elements.liveCardTitle.textContent = `Estás dirigiendo · ${session.code}`;
+    elements.liveCardText.textContent = `${session.listeners} músico${session.listeners === 1 ? "" : "s"} conectado${session.listeners === 1 ? "" : "s"}. Abre un listado o una alabanza y les cambiará a todos.`;
+    elements.startLiveButton.textContent = "Invitar";
+    elements.joinLiveButton.textContent = "Terminar";
+  } else {
+    elements.liveCardTitle.textContent = `Siguiendo al director · ${session.code}`;
+    elements.liveCardText.textContent = session.state?.title
+      ? `Ahora: ${session.state.title}. Cuando cambie, se abrirá sola.`
+      : "Cuando el director abra una alabanza, se abrirá sola en tu teléfono.";
+    elements.startLiveButton.textContent = "Ver ahora";
+    elements.joinLiveButton.textContent = "Salir";
+  }
+  elements.liveCard.classList.toggle("is-live", active);
+  elements.directListButton.textContent = session?.role === "director" ? "● Dirigiendo" : "Dirigir";
+}
+
+function liveCardPrimary() {
+  if (!liveSession) {
+    startLive().then((ok) => ok && openLiveInvite());
+  } else if (liveSession.role === "director") {
+    openLiveInvite();
+  } else {
+    showLiveNow();
+  }
+}
+
+function liveCardSecondary() {
+  if (!liveSession) openJoinSheet();
+  else confirmStopLive();
+}
+
+function confirmStopLive() {
+  if (!liveSession) return;
+  const question = liveSession.role === "director"
+    ? "¿Terminar la sesión en vivo? Los músicos dejarán de seguirte."
+    : "¿Salir de la sesión en vivo?";
+  if (confirm(question)) stopLive();
+}
+
+function showLiveNow() {
+  const state = liveSession?.state;
+  if (!state?.hymn) {
+    showToast("El director todavía no ha abierto ninguna alabanza.");
+    return;
+  }
+  liveSession.localKeys = {};
+  if (hymns.some((hymn) => hymn.number === state.hymn)) openViewer(state.hymn, { source: "live", listId: "live" });
+}
+
+function openLiveInvite() {
+  if (liveSession?.role !== "director") return;
+  const { code } = liveSession;
+  const link = liveLink(code);
+  const message = `🎶 Himnario IBSI en vivo\nToca el enlace para seguir las alabanzas del servicio:\n${link}\n\nO en la app: Listados → Unirme con código → ${code}`;
+
+  openSheet("Invitar a los músicos", (body) => {
+    const codeBox = document.createElement("div");
+    codeBox.className = "live-code";
+    codeBox.innerHTML = `<small>Código de la sesión</small><strong>${escapeHtml(code)}</strong><p>Que abran el Himnario → <b>Listados</b> → <b>Unirme con código</b>, o envíales el enlace.</p>`;
+    const actions = document.createElement("div");
+    actions.className = "sheet-buttons";
+    const whatsapp = document.createElement("a");
+    whatsapp.className = "primary";
+    whatsapp.href = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    whatsapp.target = "_blank";
+    whatsapp.rel = "noopener";
+    whatsapp.textContent = "Enviar por WhatsApp";
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "secondary-dark";
+    copy.textContent = "Copiar enlace";
+    copy.addEventListener("click", async () => {
+      try {
+        await copyShareContent(link);
+        showToast("Enlace copiado.");
+      } catch {
+        showToast(link);
+      }
+    });
+    actions.append(whatsapp, copy);
+    const tip = document.createElement("p");
+    tip.className = "sheet-note";
+    tip.textContent = "Lo que abras (y el tono que elijas) les aparecerá a todos. Deja la pantalla encendida mientras diriges.";
+    body.append(codeBox, actions, tip);
+  });
+}
+
+function openJoinSheet() {
+  openSheet("Unirme al director", (body) => {
+    const note = document.createElement("p");
+    note.className = "sheet-note";
+    note.textContent = "Escribe el código de 4 letras que aparece en el teléfono del director.";
+    const input = document.createElement("input");
+    input.className = "live-code-input";
+    input.type = "text";
+    input.maxLength = 6;
+    input.autocomplete = "off";
+    input.setAttribute("autocapitalize", "characters");
+    input.setAttribute("spellcheck", "false");
+    input.placeholder = "ABCD";
+    input.setAttribute("aria-label", "Código de la sesión");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "primary";
+    button.textContent = "Unirme";
+    const submit = async () => {
+      button.disabled = true;
+      const ok = await joinLive(input.value);
+      button.disabled = false;
+      if (ok) closeSheet();
+    };
+    button.addEventListener("click", submit);
+    input.addEventListener("input", () => { input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, ""); });
+    input.addEventListener("keydown", (event) => { if (event.key === "Enter") submit(); });
+    const actions = document.createElement("div");
+    actions.className = "sheet-buttons";
+    actions.appendChild(button);
+    body.append(note, input, actions);
+  });
+}
+
+function liveCodeFromHash() {
+  const match = window.location.hash.match(/^#vivo=([A-Za-z0-9]{4,8})$/);
+  if (!match) return null;
+  history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  return match[1].toUpperCase();
+}
 
 init();
 
@@ -185,6 +943,11 @@ async function init() {
     cleanSavedListsAgainstCatalog();
     renderCatalog(hymns);
     renderListManager();
+
+    const liveCode = liveCodeFromHash();
+    if (liveCode) await joinLive(liveCode);
+    else restoreLiveSession();
+    renderLiveUi();
 
     if (/^#migrar=/.test(window.location.hash)) await receiveMigration();
     showMoveBannerIfOldAddress();
@@ -250,6 +1013,42 @@ function wireEvents() {
 
   elements.createListButton.addEventListener("click", createNewList);
   elements.createFirstListButton.addEventListener("click", createNewList);
+  elements.newListFab.addEventListener("click", createNewList);
+  elements.backToListsButton.addEventListener("click", closeListDetail);
+  elements.listMenuButton.addEventListener("click", openListMenu);
+  elements.playListButton.addEventListener("click", playActiveList);
+  elements.directListButton.addEventListener("click", directActiveList);
+  elements.startLiveButton.addEventListener("click", liveCardPrimary);
+  elements.joinLiveButton.addEventListener("click", liveCardSecondary);
+  elements.liveBarAction.addEventListener("click", () => {
+    if (liveSession?.role === "director") openLiveInvite();
+    else showLiveNow();
+  });
+  elements.liveBarStop.addEventListener("click", confirmStopLive);
+  elements.actionSheetClose.addEventListener("click", closeSheet);
+  elements.actionSheet.addEventListener("click", (event) => {
+    // El mismo toque que abrió la hoja no debe cerrarla (algunos teléfonos repiten el clic).
+    if (event.target === elements.actionSheet && Date.now() - sheetOpenedAt > 400) closeSheet();
+  });
+  elements.listsFilter.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-list-filter]");
+    if (!button) return;
+    listFilter = button.dataset.listFilter;
+    elements.listsFilter.querySelectorAll("[data-list-filter]").forEach((item) => {
+      item.classList.toggle("active", item === button);
+      item.setAttribute("aria-checked", String(item === button));
+    });
+    renderSavedListsGrid();
+  });
+  elements.setlistNote.addEventListener("input", () => {
+    const activeList = getActiveList();
+    if (!activeList) return;
+    activeList.note = elements.setlistNote.value.slice(0, 300);
+    activeList.updatedAt = Date.now();
+    persistLists();
+    renderActiveListNote(activeList);
+    elements.saveStatus.textContent = "Cambios guardados.";
+  });
   elements.deleteListButton.addEventListener("click", deleteActiveList);
   elements.shareListButton.addEventListener("click", shareActiveList);
 
@@ -376,7 +1175,9 @@ function wireEvents() {
     if (await ensureAdminPin()) showToast("Modo administrador activado en este dispositivo.");
   });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && hymns.length) refreshSharedSongsAndRender();
+    if (document.visibilityState !== "visible") return;
+    reconnectLiveIfNeeded();
+    if (hymns.length) refreshSharedSongsAndRender();
   });
   elements.deleteCustomHymnButton.addEventListener("click", deleteCustomHymn);
   elements.sendCustomHymnsButton.addEventListener("click", sendCustomHymns);
@@ -456,6 +1257,7 @@ function wireEvents() {
 
   window.addEventListener("online", () => {
     updateConnectionState();
+    reconnectLiveIfNeeded();
     if (hymns.length) refreshSharedSongsAndRender();
   });
   window.addEventListener("offline", updateConnectionState);
@@ -477,6 +1279,11 @@ function wireEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
+    if (isSheetOpen()) {
+      if (event.key === "Escape") closeSheet();
+      return;
+    }
+
     if (!elements.importerModal.classList.contains("hidden")) {
       if (event.key === "Escape") closeImporter();
       return;
@@ -577,31 +1384,54 @@ function renderListManager() {
     : "Nuevo listado";
   elements.noListsState.classList.toggle("hidden", count > 0);
   elements.savedListsGrid.classList.toggle("hidden", count === 0);
+  elements.listsFilter.classList.toggle("hidden", count === 0);
+  elements.newListFab.classList.toggle("hidden", count >= MAX_LISTS);
+
+  const showDetail = listDetailOpen && Boolean(getActiveList());
+  if (!showDetail) listDetailOpen = false;
+  elements.listsOverview.classList.toggle("hidden", showDetail);
+  elements.activeListEditor.classList.toggle("hidden", !showDetail);
+  renderListStats();
+  renderLiveUi();
 }
 
 function renderSavedListsGrid() {
   elements.savedListsGrid.innerHTML = "";
   const fragment = document.createDocumentFragment();
 
-  sortedListsForDisplay().forEach((list) => {
+  const visible = sortedListsForDisplay().filter((list) => (listFilter === "past" ? isPastList(list) : !isPastList(list)));
+
+  visible.forEach((list) => {
     const button = document.createElement("button");
     button.type = "button";
     const past = isPastList(list);
-    button.className = `saved-list-card${list.id === activeListId ? " active" : ""}${past ? " past" : ""}`;
-    const when = formatListWhen(list);
+    button.className = `saved-list-card${past ? " past" : ""}`;
+    const time = list.time ? formatTime12(list.time) : "";
+    const count = `${list.hymns.length} alabanza${list.hymns.length === 1 ? "" : "s"}`;
+    const titles = list.hymns
+      .map((number) => hymns.find((item) => item.number === number)?.title)
+      .filter(Boolean)
+      .slice(0, 3)
+      .join(" · ");
     button.innerHTML = `
-      <span>
+      ${listCardTile(list)}
+      <span class="saved-list-copy">
         <strong>${escapeHtml(displayListName(list))}</strong>
-        ${when ? `<small class="list-when-label">${escapeHtml(when)}${past ? " · ya pasó" : ""}</small>` : ""}
-        <span>${list.hymns.length} alabanza${list.hymns.length === 1 ? "" : "s"}</span>
+        <small class="list-when-label">${escapeHtml([time, count].filter(Boolean).join(" · "))}</small>
+        ${titles ? `<span class="saved-list-preview">${escapeHtml(titles)}</span>` : ""}
       </span>
-      <span class="edit-indicator">${list.id === activeListId ? "Abierto" : "Editar"}</span>
+      <span class="chevron" aria-hidden="true">›</span>
     `;
-    button.addEventListener("click", () => selectList(list.id));
+    button.addEventListener("click", () => openListDetail(list.id));
     fragment.appendChild(button);
   });
 
   elements.savedListsGrid.appendChild(fragment);
+  const nothing = savedLists.length > 0 && visible.length === 0;
+  elements.listsFilterEmpty.classList.toggle("hidden", !nothing);
+  elements.listsFilterEmpty.textContent = listFilter === "past"
+    ? "Todavía no hay listados de fechas pasadas."
+    : "No hay servicios próximos. Toca “+ Nuevo” para crear uno.";
 }
 
 function renderActiveList() {
@@ -613,17 +1443,21 @@ function renderActiveList() {
     return;
   }
 
-  elements.activeListEditor.classList.remove("hidden");
   elements.activeListTitle.textContent = displayListName(activeList);
+  elements.activeListWhen.textContent = formatListWhen(activeList) || "Sin fecha";
+  elements.activeListCount.textContent = String(activeList.hymns.length);
   elements.setlistName.value = activeList.name;
   elements.setlistDate.value = activeList.date || "";
   elements.setlistTime.value = activeList.time || "";
-  elements.saveStatus.textContent = "Guardado automáticamente en este dispositivo.";
+  if (document.activeElement !== elements.setlistNote) elements.setlistNote.value = activeList.note || "";
+  renderActiveListNote(activeList);
+  elements.saveStatus.textContent = "Guardado en este teléfono.";
   renderListSearch();
   elements.setlistItems.innerHTML = "";
   elements.emptySetlist.classList.toggle("hidden", activeList.hymns.length > 0);
   elements.clearSetlistButton.classList.toggle("hidden", activeList.hymns.length === 0);
   elements.shareListButton.disabled = activeList.hymns.length === 0;
+  elements.playListButton.disabled = activeList.hymns.length === 0;
 
   const fragment = document.createDocumentFragment();
 
@@ -631,34 +1465,39 @@ function renderActiveList() {
     const hymn = hymns.find((item) => item.number === number);
     if (!hymn) return;
 
-    const selectedKey = transposeKey(hymn.originalKey, getTranspose(number), hymn.preferFlats);
+    const shift = listShift(activeList, number);
+    const selectedKey = hymnKeyLabel(hymn, shift);
+    const note = activeList.notes?.[number] || "";
     const row = document.createElement("article");
     row.className = "setlist-row";
     row.innerHTML = `
       <span class="position">${index + 1}</span>
-      <div class="setlist-title-block">
-        <h3>${hymn.number}. ${escapeHtml(hymn.title)}</h3>
-        ${hymn.artist ? `<p class="setlist-artist">${escapeHtml(hymn.artist)}</p>` : ""}
-        <p class="setlist-key">Tono: ${escapeHtml(selectedKey)}</p>
-      </div>
-      <div class="row-actions">
-        <button type="button" data-action="open" aria-label="Abrir">Ver</button>
-        <button type="button" data-action="up" aria-label="Subir" ${index === 0 ? "disabled" : ""}>↑</button>
-        <button type="button" data-action="down" aria-label="Bajar" ${index === activeList.hymns.length - 1 ? "disabled" : ""}>↓</button>
-        <button type="button" data-action="remove" class="remove" aria-label="Quitar">Quitar</button>
-      </div>
+      <button type="button" class="setlist-open" data-action="open">
+        <strong>${escapeHtml(hymn.title)}</strong>
+        <small>${escapeHtml([hymn.artist, hymn.custom ? "En este teléfono" : `Alabanza ${hymn.number}`].filter(Boolean).join(" · "))}</small>
+        ${note ? `<span class="setlist-note">${escapeHtml(note)}</span>` : ""}
+      </button>
+      <button type="button" class="key-pill${shift !== 0 ? " changed" : ""}" data-action="key" aria-label="Tono ${escapeHtml(selectedKey)}. Cambiar tono">${escapeHtml(selectedKey)}</button>
+      <button type="button" class="kebab" data-action="menu" aria-label="Opciones de ${escapeHtml(hymn.title)}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
+      </button>
     `;
 
     row.querySelector('[data-action="open"]').addEventListener("click", () => {
       openViewer(number, { source: "setlist", listId: activeList.id });
     });
-    row.querySelector('[data-action="up"]').addEventListener("click", () => moveActiveListItem(index, -1));
-    row.querySelector('[data-action="down"]').addEventListener("click", () => moveActiveListItem(index, 1));
-    row.querySelector('[data-action="remove"]').addEventListener("click", () => removeFromActiveList(number));
+    row.querySelector('[data-action="key"]').addEventListener("click", () => openKeySheet(number));
+    row.querySelector('[data-action="menu"]').addEventListener("click", () => openRowMenu(number));
     fragment.appendChild(row);
   });
 
   elements.setlistItems.appendChild(fragment);
+}
+
+function renderActiveListNote(list) {
+  const note = (list.note || "").trim();
+  elements.activeListNote.textContent = note;
+  elements.activeListNote.classList.toggle("hidden", !note);
 }
 
 function createNewList() {
@@ -673,10 +1512,9 @@ function createNewList() {
   newList.autoName = true;
   newList.name = autoListName(newList);
   savedLists.push(newList);
-  activeListId = newList.id;
   persistLists();
-  renderListManager();
   switchView("setlist");
+  openListDetail(newList.id, { expandDetails: true });
 
   elements.setlistDate.focus();
   showToast("Nuevo listado creado. Elige la fecha y la hora.");
@@ -698,6 +1536,7 @@ function deleteActiveList() {
     activeListId = null;
   }
 
+  listDetailOpen = false;
   persistLists();
   renderListManager();
   updateViewerAddButton();
@@ -705,11 +1544,7 @@ function deleteActiveList() {
 }
 
 function selectList(listId) {
-  if (!savedLists.some((list) => list.id === listId)) return;
-  activeListId = listId;
-  persistLists();
-  renderListManager();
-  updateViewerAddButton();
+  openListDetail(listId);
 }
 
 function getActiveList() {
@@ -743,6 +1578,8 @@ function removeFromActiveList(number) {
   if (!activeList) return;
 
   activeList.hymns = activeList.hymns.filter((item) => item !== number);
+  if (activeList.keys) delete activeList.keys[number];
+  if (activeList.notes) delete activeList.notes[number];
   activeList.updatedAt = Date.now();
   persistLists();
   renderListManager();
@@ -781,6 +1618,10 @@ function openViewer(number, context = { source: "catalog", listId: null }) {
     resolvedContext = { source: "shared", listId: sharedList.id };
   }
 
+  if (context.source === "live" && liveSession?.state) {
+    resolvedContext = { source: "live", listId: "live" };
+  }
+
   viewerContext = resolvedContext;
   currentHymn = hymn;
 
@@ -795,12 +1636,15 @@ function openViewer(number, context = { source: "catalog", listId: null }) {
 
   elements.viewer.classList.remove("hidden");
   document.body.style.overflow = "hidden";
+  document.body.classList.add("viewer-open");
   updateTransposeDisplay();
   renderTransposedSheet();
   updateViewerAddButton();
   updateSetlistNavigation();
+  updateViewerNote();
   elements.pageViewport.scrollTo({ top: 0, left: 0 });
   showPinchHintOnce();
+  liveBroadcast();
 }
 
 function closeViewer() {
@@ -809,6 +1653,7 @@ function closeViewer() {
   elements.viewer.classList.add("hidden");
   elements.transposedSheet.replaceChildren();
   document.body.style.overflow = "";
+  document.body.classList.remove("viewer-open");
   currentHymn = null;
   viewerContext = { source: "catalog", listId: null };
   swipeStart = null;
@@ -826,6 +1671,10 @@ function getViewerList() {
 
   if (viewerContext.source === "shared") {
     return sharedList;
+  }
+
+  if (viewerContext.source === "live") {
+    return liveViewerList();
   }
 
   return null;
@@ -880,6 +1729,7 @@ function navigateSetlist(direction) {
 
   if (targetIndex < 0 || targetIndex >= list.hymns.length) return;
 
+  if (viewerContext.source === "live" && liveSession) liveSession.localKeys = {};
   openViewer(list.hymns[targetIndex], {
     source: viewerContext.source,
     listId: list.id
@@ -888,18 +1738,32 @@ function navigateSetlist(direction) {
 
 function changeTranspose(delta) {
   if (!currentHymn) return;
-  const current = getTranspose(currentHymn.number);
+  const current = currentShift();
   setTranspose(Math.min(11, Math.max(-11, current + delta)));
 }
 
 function setTranspose(value) {
   if (!currentHymn) return;
 
-  transposeMap[String(currentHymn.number)] = value;
-  saveTransposeMap();
+  const number = currentHymn.number;
+  const list = getViewerList();
+  if (viewerContext.source === "live" && liveSession) {
+    // Solo en este teléfono, hasta que el director cambie de alabanza o de tono.
+    liveSession.localKeys = { ...(liveSession.localKeys || {}), [number]: value };
+  } else if (list && viewerContext.source === "setlist") {
+    list.keys = { ...(list.keys || {}), [number]: value };
+    list.updatedAt = Date.now();
+    persistLists();
+  } else if (list && viewerContext.source === "shared") {
+    list.keys = { ...(list.keys || {}), [number]: value };
+  } else {
+    transposeMap[String(number)] = value;
+    saveTransposeMap();
+  }
   updateTransposeDisplay();
   renderTransposedSheet();
   renderActiveList();
+  liveBroadcast();
 }
 
 function getTranspose(number) {
@@ -910,7 +1774,7 @@ function getTranspose(number) {
 function updateTransposeDisplay() {
   if (!currentHymn) return;
 
-  const shift = getTranspose(currentHymn.number);
+  const shift = currentShift();
   elements.currentKey.textContent = transposeKey(
     currentHymn.originalKey,
     shift,
@@ -970,7 +1834,7 @@ function renderTextSheet() {
     return;
   }
 
-  const shift = getTranspose(currentHymn.number);
+  const shift = currentShift();
   const parsed = ChordPro.parse(source);
   const header = document.createElement("header");
   header.className = "cs-header";
@@ -1173,7 +2037,7 @@ function renderPdfSheet() {
     return;
   }
 
-  const shift = getTranspose(currentHymn.number);
+  const shift = currentShift();
   const svgNamespace = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(svgNamespace, "svg");
   svg.classList.add("hymn-layout-svg");
@@ -1476,7 +2340,17 @@ function applyNumberChanges(oldSongs, newSongs) {
   savedLists.forEach((list) => {
     const next = list.hymns.map(remap).filter((n) => n !== null);
     if (next.join() !== list.hymns.join()) {
+      const remapObject = (object) => {
+        const result = {};
+        Object.entries(object || {}).forEach(([key, value]) => {
+          const target = remap(Number(key));
+          if (target !== null) result[target] = value;
+        });
+        return result;
+      };
       list.hymns = [...new Set(next)];
+      list.keys = remapObject(list.keys);
+      list.notes = remapObject(list.notes);
       list.updatedAt = Date.now();
     }
   });
@@ -2239,7 +3113,10 @@ function buildSharedListUrl(list) {
     n: displayListName(list).slice(0, 80),
     h: list.hymns,
     ...(list.date ? { d: list.date } : {}),
-    ...(list.time ? { t: list.time } : {})
+    ...(list.time ? { t: list.time } : {}),
+    ...(Object.keys(list.keys || {}).length ? { k: list.keys } : {}),
+    ...(Object.keys(list.notes || {}).length ? { o: list.notes } : {}),
+    ...(list.note ? { m: list.note.slice(0, 300) } : {})
   };
   const encoded = encodeSharePayload(payload);
   return `${window.location.origin}${window.location.pathname}#list=${encoded}`;
@@ -2255,7 +3132,9 @@ function buildWhatsAppShareText(list) {
     .slice(0, maximumLines)
     .map((hymn, index) => {
       const artist = hymn.artist ? ` — ${hymn.artist}` : "";
-      return `${index + 1}. ${hymn.number}. ${hymn.title}${artist}`;
+      const key = hymnKeyLabel(hymn, listShift(list, hymn.number));
+      const note = list.notes?.[hymn.number] ? `\n    📝 ${list.notes[hymn.number]}` : "";
+      return `${index + 1}. ${hymn.number}. ${hymn.title}${artist} (${key})${note}`;
     });
 
   if (visibleHymns.length > maximumLines) {
@@ -2266,6 +3145,7 @@ function buildWhatsAppShareText(list) {
     "🎶 *Himnario IBSI*",
     `📋 *${displayListName(list)}*`,
     ...(formatListWhen(list) ? [`📅 ${formatListWhen(list)}`] : []),
+    ...(list.note ? [`📝 ${list.note}`] : []),
     "",
     ...lines,
     "",
@@ -2340,6 +3220,9 @@ function parseSharedListFromHash() {
       hymns: hymnNumbers,
       date: validIsoDate(payload.d),
       time: validTime(payload.t),
+      keys: sanitizeListKeys(payload.k, hymnNumbers),
+      notes: sanitizeListNotes(payload.o, hymnNumbers),
+      note: typeof payload.m === "string" ? payload.m.slice(0, 300) : "",
       shared: true
     };
   } catch (error) {
@@ -2377,8 +3260,9 @@ function renderSharedListModal() {
       <span class="shared-list-copy">
         <strong>${hymn.number}. ${escapeHtml(hymn.title)}</strong>
         ${hymn.artist ? `<small>${escapeHtml(hymn.artist)}</small>` : ""}
+        ${sharedList.notes?.[number] ? `<small class="setlist-note">${escapeHtml(sharedList.notes[number])}</small>` : ""}
       </span>
-      <span class="open-mark">›</span>
+      <span class="key-pill small">${escapeHtml(hymnKeyLabel(hymn, listShift(sharedList, number)))}</span>
     `;
     button.addEventListener("click", () => {
       closeSharedListModal(false);
@@ -2424,14 +3308,16 @@ function importSharedList() {
   imported.date = sharedList.date || "";
   imported.time = sharedList.time || "";
   imported.autoName = false;
+  imported.keys = { ...(sharedList.keys || {}) };
+  imported.notes = { ...(sharedList.notes || {}) };
+  imported.note = sharedList.note || "";
 
   savedLists.push(imported);
-  activeListId = imported.id;
   persistLists();
 
   closeSharedListModal(true);
-  renderListManager();
   switchView("setlist");
+  openListDetail(imported.id);
   showToast("Listado compartido guardado.");
 }
 
@@ -2513,6 +3399,9 @@ function createListObject(name, hymnNumbers) {
     id: `list-${now}-${Math.random().toString(36).slice(2, 8)}`,
     name: String(name || "Listado 1"),
     hymns: [...new Set(hymnNumbers.filter(Number.isInteger))],
+    keys: {},
+    notes: {},
+    note: "",
     createdAt: now,
     updatedAt: now
   };
@@ -2536,7 +3425,12 @@ function loadSavedLists() {
         updatedAt: Number(list.updatedAt) || Date.now(),
         date: validIsoDate(list.date),
         time: validTime(list.time),
-        autoName: Boolean(list.autoName)
+        autoName: Boolean(list.autoName),
+        note: typeof list.note === "string" ? list.note.slice(0, 300) : ""
+      })).map((list, index) => ({
+        ...list,
+        keys: sanitizeListKeys(parsed[index].keys, list.hymns),
+        notes: sanitizeListNotes(parsed[index].notes, list.hymns)
       }));
 
       const shouldRemoveAutomaticEmptyList =

@@ -18,10 +18,10 @@
   <meta name="twitter:title" content="Himnario IBSI">
   <meta name="twitter:description" content="Abre y guarda un listado compartido de alabanzas.">
 
-  <link rel="manifest" href="manifest.webmanifest?v=3.13">
+  <link rel="manifest" href="manifest.webmanifest?v=3.14">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
   <link rel="icon" href="assets/icons/icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=3.13">
+  <link rel="stylesheet" href="styles.css?v=3.14">
   <script>
     // Tema elegido en Ajustes (se aplica antes de pintar para que no parpadee).
     try {
@@ -87,67 +87,138 @@
     </section>
 
     <section id="setlistView" class="view" aria-labelledby="setlistTitle">
-      <div class="list-manager-heading">
-        <div>
-          <h2 id="setlistTitle">Mis listados</h2>
-          <p id="listLimitText">No tienes listados guardados.</p>
+      <div id="listsOverview" class="lists-overview">
+        <div class="list-manager-heading">
+          <div>
+            <h2 id="setlistTitle">Listados</h2>
+            <p id="listLimitText">No tienes listados guardados.</p>
+          </div>
+          <button id="createListButton" class="primary compact" type="button">+ Nuevo</button>
         </div>
-        <button id="createListButton" class="primary" type="button">Nuevo listado</button>
-      </div>
 
-      <div id="noListsState" class="no-lists-state">
-        <div class="no-lists-icon">♫</div>
-        <h3>Aún no has creado ningún listado</h3>
-        <p>Crea uno para organizar las alabanzas que cantarás y compartirlo con otras personas.</p>
-        <button id="createFirstListButton" class="primary" type="button">Crear mi primer listado</button>
-      </div>
+        <div class="list-stats" aria-label="Resumen de tus listados">
+          <div class="list-stat">
+            <span class="stat-icon stat-blue" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg></span>
+            <strong id="statLists">0</strong>
+            <small>Listados</small>
+          </div>
+          <div class="list-stat">
+            <span class="stat-icon stat-green" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
+            <strong id="statUpcoming">0</strong>
+            <small>Próximos</small>
+          </div>
+          <div class="list-stat">
+            <span class="stat-icon stat-amber" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></span>
+            <strong id="statHymns">0</strong>
+            <small>Alabanzas</small>
+          </div>
+        </div>
 
-      <div id="savedListsGrid" class="saved-lists-grid" aria-label="Listados guardados"></div>
+        <section id="liveCard" class="live-card" aria-labelledby="liveCardTitle">
+          <span class="live-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.2"/><path d="M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2"/></svg></span>
+          <div class="live-card-copy">
+            <h3 id="liveCardTitle">Modo director</h3>
+            <p id="liveCardText">Tú cambias la alabanza y el tono, y a todos los músicos les cambia al mismo tiempo.</p>
+          </div>
+          <div id="liveCardActions" class="live-card-actions">
+            <button id="startLiveButton" class="primary compact" type="button">Dirigir</button>
+            <button id="joinLiveButton" class="secondary-dark compact" type="button">Unirme con código</button>
+          </div>
+        </section>
+
+        <div id="listsFilter" class="segmented list-filter" role="radiogroup" aria-label="Mostrar listados">
+          <button type="button" role="radio" data-list-filter="upcoming" class="active" aria-checked="true">Próximos</button>
+          <button type="button" role="radio" data-list-filter="past" aria-checked="false">Pasados</button>
+        </div>
+
+        <div id="noListsState" class="no-lists-state">
+          <div class="no-lists-icon">♫</div>
+          <h3>Aún no has creado ningún listado</h3>
+          <p>Crea uno por servicio: elige la fecha y la hora, agrega las alabanzas con su tono y compártelo.</p>
+          <button id="createFirstListButton" class="primary" type="button">Crear mi primer listado</button>
+        </div>
+
+        <div id="savedListsGrid" class="saved-lists-grid" aria-label="Listados guardados"></div>
+        <p id="listsFilterEmpty" class="empty-state hidden"></p>
+
+        <button id="newListFab" class="fab" type="button" aria-label="Nuevo listado">+</button>
+      </div>
 
       <section id="activeListEditor" class="active-list-editor hidden" aria-labelledby="activeListTitle">
-        <div class="active-list-heading">
-          <div>
-            <span class="section-label">Editando</span>
+        <div class="list-detail-bar">
+          <button id="backToListsButton" class="icon-round" type="button" aria-label="Volver a los listados">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
+          </button>
+          <div class="list-detail-title">
             <h3 id="activeListTitle"></h3>
+            <span id="activeListWhen" class="list-detail-when"></span>
           </div>
-          <div class="list-actions">
-            <button id="shareListButton" class="share-button compact" type="button">Compartir</button>
-            <button id="deleteListButton" class="danger compact" type="button">Eliminar</button>
+          <button id="listMenuButton" class="icon-round" type="button" aria-label="Más opciones del listado">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg>
+          </button>
+        </div>
+
+        <div class="list-hero">
+          <p id="activeListNote" class="list-general-note hidden"></p>
+          <div class="list-hero-actions">
+            <button id="playListButton" class="primary" type="button">▶ Empezar</button>
+            <button id="directListButton" class="live-button" type="button">Dirigir</button>
+            <button id="shareListButton" class="share-button" type="button">Compartir</button>
           </div>
         </div>
 
-        <div class="list-when">
-          <label class="field">
-            <span>Fecha</span>
-            <input id="setlistDate" type="date">
-          </label>
-          <label class="field">
-            <span>Hora</span>
-            <input id="setlistTime" type="time" step="900">
-          </label>
+        <details id="listDetails" class="list-details">
+          <summary>
+            <span>Datos del servicio</span>
+            <small>Fecha, hora, nombre y nota general</small>
+          </summary>
+          <div class="list-details-body">
+            <div class="list-when">
+              <label class="field">
+                <span>Fecha</span>
+                <input id="setlistDate" type="date">
+              </label>
+              <label class="field">
+                <span>Hora</span>
+                <input id="setlistTime" type="time" step="900">
+              </label>
+            </div>
+
+            <label class="field">
+              <span>Nombre del listado</span>
+              <input id="setlistName" type="text" maxlength="80" placeholder="Alabanzas Domingo">
+            </label>
+            <p id="setlistNameHint" class="setting-note">El nombre se pone solo según la fecha. Si lo cambias, se queda el tuyo.</p>
+
+            <label class="field">
+              <span>Nota general (opcional)</span>
+              <textarea id="setlistNote" maxlength="300" rows="2" placeholder="Ej.: Ensayo a las 8:30. Santa Cena al final."></textarea>
+            </label>
+
+            <div class="list-danger-zone">
+              <button id="clearSetlistButton" class="danger compact hidden" type="button">Vaciar listado</button>
+              <button id="deleteListButton" class="danger compact" type="button">Eliminar listado</button>
+            </div>
+          </div>
+        </details>
+
+        <div class="setlist-heading">
+          <h4>Alabanzas <span id="activeListCount" class="count-pill">0</span></h4>
+          <p id="saveStatus" class="save-status">Guardado en este teléfono.</p>
         </div>
 
-        <label class="field">
-          <span>Nombre del listado</span>
-          <input id="setlistName" type="text" maxlength="80" placeholder="Alabanzas Domingo">
-        </label>
-        <p id="setlistNameHint" class="setting-note">El nombre se pone solo según la fecha. Si lo cambias, se queda el tuyo.</p>
+        <div id="setlistItems" class="setlist-items"></div>
+        <p id="emptySetlist" class="empty-state">Todavía no hay alabanzas. Búscalas aquí abajo y toca “+ Agregar”.</p>
 
-        <div class="list-search">
+        <div class="list-search add-card">
+          <h4>Agregar alabanzas</h4>
           <label class="search-box">
             <span class="sr-only">Buscar alabanza para agregar</span>
             <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-            <input id="listSearchInput" type="search" placeholder="Buscar alabanza para agregar" autocomplete="off">
+            <input id="listSearchInput" type="search" placeholder="Número, nombre o artista" autocomplete="off">
           </label>
           <div id="listSearchResults" class="list-search-results hidden" aria-live="polite"></div>
         </div>
-
-        <p id="saveStatus" class="save-status">Guardado automáticamente en este dispositivo.</p>
-
-        <div id="setlistItems" class="setlist-items"></div>
-        <p id="emptySetlist" class="empty-state">Todavía no has agregado alabanzas a este listado.</p>
-
-        <button id="clearSetlistButton" class="danger hidden" type="button">Vaciar este listado</button>
       </section>
     </section>
 
@@ -191,7 +262,7 @@
         <h3>Acerca de</h3>
         <div class="setting-row">
           <div>
-            <strong class="eyebrow-version">Versión 3.13</strong>
+            <strong class="eyebrow-version">Versión 3.14</strong>
             <p>Las actualizaciones se instalan solas al abrir la app con internet.</p>
           </div>
           <span id="connectionState" class="status-pill">Comprobando conexión…</span>
@@ -238,6 +309,8 @@
         <strong id="nextHymnName">Fin del listado</strong>
       </button>
     </div>
+
+    <p id="viewerNote" class="viewer-note hidden" role="note"></p>
 
     <div id="pageViewport" class="page-viewport">
       <div id="transposedSheet" class="transposed-sheet" role="document" aria-label="Letra con acordes transpuestos y alineados"></div>
@@ -334,10 +407,28 @@ Majestad, adora a su majestad"></textarea>
     </section>
   </div>
 
+  <div id="liveBar" class="live-bar hidden" role="status" aria-live="polite">
+    <span class="live-dot" aria-hidden="true"></span>
+    <span id="liveBarText" class="live-bar-text"></span>
+    <button id="liveBarAction" class="live-bar-button" type="button">Invitar</button>
+    <button id="liveBarStop" class="live-bar-button" type="button">Terminar</button>
+  </div>
+
+  <div id="actionSheet" class="sheet-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="actionSheetTitle">
+    <section class="sheet-panel">
+      <div class="sheet-grip" aria-hidden="true"></div>
+      <header class="sheet-header">
+        <h3 id="actionSheetTitle"></h3>
+        <button id="actionSheetClose" class="modal-close" type="button" aria-label="Cerrar">×</button>
+      </header>
+      <div id="actionSheetBody" class="sheet-body"></div>
+    </section>
+  </div>
+
   <div id="toast" class="toast hidden" role="status"></div>
 
-  <script src="chordpro.js?v=3.13" defer></script>
-  <script src="tips.js?v=3.13" defer></script>
-  <script src="app.js?v=3.13" defer></script>
+  <script src="chordpro.js?v=3.14" defer></script>
+  <script src="tips.js?v=3.14" defer></script>
+  <script src="app.js?v=3.14" defer></script>
 </body>
 </html>

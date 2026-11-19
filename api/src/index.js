@@ -10,12 +10,21 @@
 //   PUT    /fixes/:n     → corregir una original (1–214) para todos             (requiere clave)
 //   DELETE /fixes/:n     → quitar la corrección y volver a la original          (requiere clave)
 //
+//   POST   /live              → empezar el modo director: devuelve { code, token }
+//   GET    /live/:code        → ¿existe la sesión? + estado actual
+//   GET    /live/:code/ws     → WebSocket (con ?token= es el director; sin él, músico que sigue)
+//
 // GET /songs también devuelve `fixes`: las correcciones de las originales.
 //
 // Cada alabanza tiene un `id` que nunca cambia y un `number` que se recorre al eliminar.
 // La clave va en  Authorization: Bearer <clave>  y se guarda en el secreto ADMIN_PIN.
 
+import { DurableObject } from "cloudflare:workers";
+
 const MAX_CHO = 40000;
+const LIVE_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // sin 0/O ni 1/I/L para que no se confundan
+const LIVE_TTL_MS = 12 * 60 * 60 * 1000; // una sesión sin movimiento se borra a las 12 horas
+
 const MAX_TEXT = 100;
 
 export default {
@@ -28,6 +37,21 @@ export default {
       const path = url.pathname.replace(/\/+$/, "") || "/";
       const songMatch = /^\/songs\/([A-Za-z0-9-]{8,64})$/.exec(path);
       const fixMatch = /^\/fixes\/(\d{1,4})$/.exec(path);
+      const liveMatch = /^\/live\/([A-Za-z0-9]{4,8})(\/ws)?$/.exec(path);
+
+      if (request.method === "POST" && path === "/live") return createLive(env, cors);
+      if (liveMatch) {
+        const code = liveMatch[1].toUpperCase();
+        const stub = env.LIVE.get(env.LIVE.idFromName(code));
+        if (liveMatch[2]) {
+          if (request.headers.get("Upgrade") !== "websocket") return json({ error: "Se esperaba WebSocket" }, 426, cors);
+          return stub.fetch(new Request(`https://live/ws${url.search}`, request));
+        }
+        if (request.method === "GET") {
+          const response = await stub.fetch("https://live/info");
+          return json(await response.json(), response.status, cors);
+        }
+      }
 
       if (request.method === "GET" && path === "/songs") return listSongs(env, cors);
       if (request.method === "GET" && path === "/auth") {
@@ -199,4 +223,169 @@ async function deleteSong(id, env, cors) {
   ]);
 
   return json({ ok: true, removedNumber: target.number }, 200, cors);
+}
+
+// ---------- Modo director ----------
+
+function randomCode(length) {
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  return Array.from(bytes, (byte) => LIVE_CODE_CHARS[byte % LIVE_CODE_CHARS.length]).join("");
+}
+
+async function createLive(env, cors) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const code = randomCode(4);
+    const stub = env.LIVE.get(env.LIVE.idFromName(code));
+    const response = await stub.fetch("https://live/create", { method: "POST" });
+    if (response.status === 409) continue; // el código ya está en uso: probar otro
+    const { token } = await response.json();
+    return json({ code, token }, 201, cors);
+  }
+  return json({ error: "No se pudo crear la sesión, intenta de nuevo" }, 503, cors);
+}
+
+function cleanText(value, max) {
+  return String(value ?? "").slice(0, max);
+}
+
+function cleanInt(value, min, max, fallback = 0) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= min && number <= max ? number : fallback;
+}
+
+// Solo se guarda lo que la app necesita para mostrar la misma alabanza en el mismo tono.
+function cleanLiveState(raw, previousSeq) {
+  const hymns = Array.isArray(raw?.list?.hymns)
+    ? raw.list.hymns.map((n) => cleanInt(n, 1, 99999, 0)).filter(Boolean).slice(0, 60)
+    : [];
+  const keys = {};
+  if (raw?.list?.keys && typeof raw.list.keys === "object") {
+    for (const n of hymns) {
+      if (raw.list.keys[n] !== undefined) keys[n] = cleanInt(raw.list.keys[n], -11, 11, 0);
+    }
+  }
+  return {
+    hymn: cleanInt(raw?.hymn, 0, 99999, 0) || null,
+    shift: cleanInt(raw?.shift, -11, 11, 0),
+    title: cleanText(raw?.title, 100),
+    note: cleanText(raw?.note, 200),
+    list: hymns.length ? { name: cleanText(raw.list.name, 80), hymns, keys } : null,
+    seq: previousSeq + 1,
+    at: Date.now()
+  };
+}
+
+export class LiveRoom extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    // Responde "ping" sin despertar al objeto: mantiene viva la conexión y no cuesta nada.
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+  }
+
+  async meta() {
+    const meta = await this.ctx.storage.get("meta");
+    if (!meta || meta.ended || Date.now() - meta.touched > LIVE_TTL_MS) return null;
+    return meta;
+  }
+
+  followers(except) {
+    return this.ctx.getWebSockets("follower").filter((ws) => ws !== except);
+  }
+
+  sendAll(message, tag) {
+    const text = JSON.stringify(message);
+    for (const ws of this.ctx.getWebSockets(tag)) {
+      try { ws.send(text); } catch { /* conexión ya cerrada */ }
+    }
+  }
+
+  announceCount(except) {
+    this.sendAll({ type: "count", listeners: this.followers(except).length }, "director");
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/create") {
+      if (await this.meta()) return new Response("en uso", { status: 409 });
+      await this.ctx.storage.deleteAll();
+      const tokenBytes = crypto.getRandomValues(new Uint8Array(18));
+      const token = btoa(String.fromCharCode(...tokenBytes)).replace(/[+/=]/g, "");
+      const now = Date.now();
+      await this.ctx.storage.put("meta", { token, created: now, touched: now, ended: false });
+      await this.ctx.storage.put("state", null);
+      await this.ctx.storage.setAlarm(now + LIVE_TTL_MS);
+      return Response.json({ token });
+    }
+
+    const meta = await this.meta();
+    if (!meta) return Response.json({ error: "La sesión no existe o ya terminó" }, { status: 404 });
+    const state = await this.ctx.storage.get("state");
+
+    if (url.pathname === "/info") {
+      return Response.json({ ok: true, state, listeners: this.followers().length });
+    }
+
+    if (url.pathname === "/ws") {
+      const isDirector = url.searchParams.get("token") === meta.token;
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair);
+      this.ctx.acceptWebSocket(server, [isDirector ? "director" : "follower"]);
+      server.send(JSON.stringify({
+        type: "hello",
+        role: isDirector ? "director" : "follower",
+        state,
+        listeners: this.followers().length
+      }));
+      if (!isDirector) this.announceCount();
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
+    return new Response("No encontrado", { status: 404 });
+  }
+
+  async webSocketMessage(ws, message) {
+    if (!this.ctx.getTags(ws).includes("director")) return; // los músicos solo escuchan
+    let data;
+    try { data = JSON.parse(String(message)); } catch { return; }
+    const meta = await this.meta();
+    if (!meta) return;
+
+    if (data.type === "state") {
+      const previous = await this.ctx.storage.get("state");
+      const state = cleanLiveState(data.state, previous?.seq || 0);
+      meta.touched = Date.now();
+      await this.ctx.storage.put({ state, meta });
+      this.sendAll({ type: "state", state }, "follower");
+      this.sendAll({ type: "ack", seq: state.seq }, "director");
+    } else if (data.type === "end") {
+      meta.ended = true;
+      await this.ctx.storage.put("meta", meta);
+      this.sendAll({ type: "ended" });
+      for (const socket of this.ctx.getWebSockets()) {
+        try { socket.close(1000, "Terminó"); } catch { /* ya cerrada */ }
+      }
+    }
+  }
+
+  async webSocketClose(ws, code) {
+    try { ws.close(code === 1005 || code === 1006 ? 1000 : code, "Adiós"); } catch { /* ya cerrada */ }
+    if (this.ctx.getTags(ws).includes("follower")) this.announceCount(ws);
+  }
+
+  async webSocketError(ws) {
+    if (this.ctx.getTags(ws).includes("follower")) this.announceCount(ws);
+  }
+
+  async alarm() {
+    const meta = await this.ctx.storage.get("meta");
+    if (meta && !meta.ended && Date.now() - meta.touched < LIVE_TTL_MS) {
+      await this.ctx.storage.setAlarm(meta.touched + LIVE_TTL_MS);
+      return;
+    }
+    for (const socket of this.ctx.getWebSockets()) {
+      try { socket.close(1000, "Sesión vencida"); } catch { /* ya cerrada */ }
+    }
+    await this.ctx.storage.deleteAll();
+  }
 }
